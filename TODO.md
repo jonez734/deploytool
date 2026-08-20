@@ -329,13 +329,51 @@ Add helpers to each top-level Makefile:
 [ ] **`bbsengine6/Makefile:PROJECTRELEASEDIR`** and the existing
     `release` tarball target: untouched.
 
-# Phase 1: `deploy` wheel-install + `--dev` flag
+## Phase 0 addendum: zoidoffice OUTDIR migration
+
+Added 2026-08-20 to bring `zoidoffice` in line with the bed/bbsengine6/
+casino migration to `/srv/repo/<project>/`. Same pattern as the existing
+Phase 0 entries above. Prerequisite for the wider `--editable` wheel-
+install path in Phase 2 (zoidoffice's `install` target needs a wheel to
+install when `DEPLOY_EDITABLE` is unset).
+
+[x] **`zoidoffice/Makefile`** (top-level) — update `OUTDIR` from
+    `$(CURDIR)/dist/` (line 2) to `/srv/repo/$(PROJECT)/`. Add
+    `ensure-repo`, `ensure-build-dir` helpers (parallels
+    `bed/Makefile:73-82`). Update `.PHONY` (line 7) to list them.
+    `build` (line 15) becomes `build: version ensure-build-dir`
+    so perms are guaranteed before the build runs.
+
+[x] **`zoidoffice/src/Makefile`** — update `OUTDIR` from
+    `../dist/` (line 2) to `/srv/repo/$(PROJECT)/`. Build target
+    (line 12-13) unchanged (delegated from top-level).
+
+[x] **Verification**:
+    - `make -n build` in `zoidoffice/` shows `ensure-build-dir`
+      then `$(MAKE) -C src build` then
+      `python3 -m build --outdir /srv/repo/zoidoffice/`.
+      Confirmed 2026-08-20.
+    - Real run as `jam`: not run yet (requires `sudo -u jam` and
+      the `/srv/repo/zoidoffice/` dir to be chgrp'd to `repo`,
+      which the `ensure-build-dir` helper will do on first
+      invocation). Re-run with `sudo -u jam make build` once
+      Phase 0's other projects are similarly exercised, then
+      verify `ls -l /srv/repo/zoidoffice/` shows the new wheel
+      owned `repo:repo`, mode `0664`.
+
+# Phase 1: `deploy` wheel-install + `--editable` flag
 
 Phase 1 flips three per-project Makefiles to install the wheel that
 `make build` produces (which after Phase 0 lands in
-`/srv/repo/<project>/<project>-<VERSION>-*.whl`), and adds a `--dev`
-flag so the install mode can be toggled between wheel and editable.
-**Phase 0 must land first** — these install paths depend on it.
+`/srv/repo/<project>/<project>-<VERSION>-*.whl`), and adds an
+`--editable` flag so the install mode can be toggled between wheel
+and editable. **Phase 0 must land first** — these install paths
+depend on it.
+
+Covers the three projects with Python-installing `deploy-tui`
+targets: `bbsengine6`, `bed`, `casino`. The `deploytool` self-install
+(`deploytool.tui`) is also in scope. See Phase 2 for the wider
+Makefile set (`zoid6`, `zoidoffice`, `getdate_next`, `backuptools`).
 
 ## Install pattern: explicit single wheel
 
@@ -361,76 +399,96 @@ deploy-tui: build
   parse-time variable expansion.
 - Loud error message if the wheel isn't there, instead of pip
   silently failing.
-- `--dev` variant replaces `pip install $$WHEEL` with
+- `--editable` variant replaces `pip install $$WHEEL` with
   `pip install -e <source-tree>` (independent of `OUTDIR`).
 
 ## Per-project Makefiles: install the built wheel
 
-[ ] **bbsengine6/Makefile** — `deploy-tui` (line 172-173) currently
+[ ] **bbsengine6/Makefile** — `deploy-tui` (line 210-211) currently
     calls `$(MAKE) -C py/src install`, which `py/src/Makefile:11-12`
     resolves to `cd .. && pip install --no-cache-dir -e .` —
     editable install against `py/`, not the wheel. Change `deploy-tui`
     to depend on `build`, then use the explicit-wheel recipe above
     to install the just-built
     `/srv/repo/bbsengine6/bbsengine6-$(VERSION)-*.whl` into the
-    active venv. Keep `pip install -e py/` available for `--dev`.
+    active venv. Keep `pip install -e py/` available for
+    `--editable`.
 
-[ ] **bed/Makefile** — `deploy: install` (line 172) already runs
-    `install-venv`, which builds wheels for `bbsengine6` and `bed`
-    itself into `/tmp/bed-$$/` then installs them into
-    `/var/lib/bed/venv` (line 118-122). (`getdate_next` is no longer
-    built inline — pip resolves it as a transitive runtime dep of
-    bbsengine6 via `bbsengine6/py/pyproject.toml`.) After Phase 0,
-    the bed wheel produced by top-level `make build` lives at
-    `/srv/repo/bed/bed-$(VERSION)-*.whl`. Confirm that the install
-    target's inline `build --wheel` matches Phase 0's `make build`
-    output, so `deploy` does not build a duplicate wheel into
-    `/tmp/bed-$$/`. If `install-venv`'s inline build is kept, factor
+[ ] **bed/Makefile** — `deploy` (line 271) is `deploy: deploy-venv`,
+    where `deploy-venv` (line 245-261) builds wheels for `bbsengine6`
+    and `bed` itself into `/tmp/bed-$$/` then installs them into
+    the active venv. (`getdate_next` is no longer built inline —
+    pip resolves it as a transitive runtime dep of bbsengine6 via
+    `bbsengine6/py/pyproject.toml`.) After Phase 0, the bed wheel
+    produced by top-level `make build` lives at
+    `/srv/repo/bed/bed-$(VERSION)-*.whl`. Confirm that
+    `deploy-venv`'s inline `build --wheel` matches Phase 0's
+    `make build` output, so `deploy` does not build a duplicate
+    wheel into `/tmp/bed-$$/`. If the inline build is kept, factor
     it into the top-level `build` target so there is one source of
     truth for the bed wheel path.
 
-[ ] **casino/Makefile** — `deploy-tui: install` (line 104) calls
+[ ] **casino/Makefile** — `deploy-tui: install` (line 135) calls
     top-level `install`, which is `$(PYTHON) -m pip install .` (line
-    57). That installs from the source tree, not from the wheel just
-    built by `make build` into
+    87-88). That installs from the source tree, not from the wheel
+    just built by `make build` into
     `/srv/repo/casino/casino-$(VERSION)-*.whl` (after Phase 0).
     Change `deploy-tui` to depend on `build`, then use the
     explicit-wheel recipe above to install into the active venv.
 
-## `deploy --dev` — editable install
+## `deploy --editable` — editable install
 
-[ ] **src/deploytool/lib.py** — add `--dev` to
+[ ] **src/deploytool/lib.py** — add `--editable` to
     `buildargs()` (ArgumentParser). When set, the per-project Makefile
     should install in editable mode (`pip install -e ...`) so edits
     in the source tree are picked up on next interpreter start without
     a rebuild + reinstall.
 
 [ ] **src/deploytool/lib.py** — `run_make_deploy`
-    propagates `--dev` to `make` via an env var (suggested name:
-    `DEPLOY_DEV=1`) so each per-project Makefile can swap
+    propagates `--editable` to `make` via env var
+    **`DEPLOY_EDITABLE=1`** so each per-project Makefile can swap
     `pip install $$WHEEL` for `pip install -e <source-tree>`.
-    `--dev` is independent of `OUTDIR`: the editable install path
+    `--editable` is independent of `OUTDIR`: the editable install path
     is the source tree, not `/srv/repo/`.
 
-[ ] **bbsengine6/Makefile** — honor the chosen env var: when set,
+[ ] **bbsengine6/Makefile** — honor `DEPLOY_EDITABLE=1`: when set,
     install via `pip install -e py/`; when unset, install the
     wheel via the explicit-wheel recipe.
 
-[ ] **bed/Makefile** — honor the chosen env var: when set, install
-    via `pip install -e .` from the project root (or `src/`); when
-    unset, install the wheel into `/var/lib/bed/venv`.
+[ ] **bed/Makefile** — honor `DEPLOY_EDITABLE=1`. **Rename the
+    existing `DEV` var to `EDITABLE`** at `bed/Makefile:48,252-259`;
+    `EDITABLE=1` short-circuits the wheel-build path and runs
+    `$(MAKE) -C src install` (editable) into the **active** venv.
+    Also accept `DEPLOY_EDITABLE` as a synonym for one release to
+    ease migration of any external scripts that still set `DEV=1`.
+    Note the behavior change: `bed`'s dev mode installs editable
+    into the active venv (not per-service `/var/lib/bed/venv`) —
+    this is intentional, document it in the Makefile comment.
 
-[ ] **casino/Makefile** — honor the chosen env var: when set,
+[ ] **casino/Makefile** — honor `DEPLOY_EDITABLE=1`: when set,
     install via `pip install -e .` from the project root; when
-    unset, install the wheel into the active venv.
+    unset, install the wheel via the explicit-wheel recipe.
+
+### Per-sub-target semantics for `--editable`
+
+| Project.sub            | `--editable` set              | `--editable` unset                          |
+|------------------------|-------------------------------|---------------------------------------------|
+| `bbsengine6.tui`       | `pip install -e py/`          | Wheel from `/srv/repo/bbsengine6/`          |
+| `bbsengine6.www`       | rsync only (no-op)            | rsync only (no-op)                          |
+| `bed.tui` / `bed.venv` / `bed` | Editable into **active** venv | Wheel into `/var/lib/bed/venv`        |
+| `bed.prod`             | sudo umbrella, no-op          | sudo umbrella, no-op (uses `install-fhs`)   |
+| `casino.tui`           | `pip install -e .`            | Wheel from `/srv/repo/casino/`              |
+| `casino.www`           | rsync only (no-op)            | rsync only (no-op)                          |
+| `deploytool.tui`       | Editable into active venv     | Wheel from `/srv/repo/deploytool/`          |
 
 [ ] **Verification** (dry-run inspection):
-    - `deploy --dry-run bbsengine6.tui`        → `pip install <one explicit path under /srv/repo/bbsengine6/>`
-    - `deploy --dry-run --dev bbsengine6.tui` → `pip install -e py/`
-    - `deploy --dry-run bed`                   → `pip install <one explicit path under /srv/repo/bed/>`
-    - `deploy --dry-run --dev bed`             → `pip install -e .`
-    - `deploy --dry-run casino.tui`            → `pip install <one explicit path under /srv/repo/casino/>`
-    - `deploy --dry-run --dev casino.tui`      → `pip install -e .`
+    - `deploy --dry-run bbsengine6.tui`           → `pip install <one explicit path under /srv/repo/bbsengine6/>`
+    - `deploy --dry-run --editable bbsengine6.tui` → `pip install -e py/`
+    - `deploy --dry-run bed`                      → `pip install <one explicit path under /srv/repo/bed/>`
+    - `deploy --dry-run --editable bed`           → `pip install -e .` (active venv; log "dev mode")
+    - `deploy --dry-run casino.tui`               → `pip install <one explicit path under /srv/repo/casino/>`
+    - `deploy --dry-run --editable casino.tui`    → `pip install -e .`
+    - `deploy --dry-run --editable bbsengine6.www` → rsync, **no** `pip install` line (www-only no-op)
 
 [ ] **Update `VENV_LAYOUT`** in
     `src/deploytool/lib.py:55-70` once the three Makefiles
