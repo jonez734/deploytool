@@ -372,13 +372,13 @@ and editable. **Phase 0 must land first** — these install paths
 depend on it.
 
 Covers the projects with Python-installing `deploy-tui` targets:
-`bbsengine6`, `bed`, `casino`, and the `deploytool` self-install
-(`deploytool.tui`). See Phase 2 for the wider Makefile set
-(`zoid6`, `zoidoffice`, `getdate_next`, `backuptools`).
+`bbsengine6`, `bed`, `casino`, `zoid6`, and the `deploytool`
+self-install (`deploytool.tui`). See Phase 2 for the remaining
+Makefile set (`zoidoffice`, `getdate_next`, `backuptools`).
 
 **Status (2026-08-20): deploytool side complete; per-project
-Makefiles complete (bbsengine6, bed, casino, deploytool). Bed
-deploy-venv still uses inline `python -m build` to `/tmp/bed-$$/`
+Makefiles complete (bbsengine6, bed, casino, zoid6, deploytool).
+Bed deploy-venv still uses inline `python -m build` to `/tmp/bed-$$/`
 rather than the Phase 0 `/srv/repo/bed/` wheel — that's a Phase 0
 question, left as a separate item below.**
 
@@ -463,6 +463,19 @@ endif
     `pyproject.toml:6`); version comes from
     `src/casino/_version.py`.
 
+[x] **zoid6/Makefile** — `deploy-tui` (top-level `Makefile:79-80`)
+    delegates to `src/Makefile deploy-tui`. The inner `src/Makefile`
+    `deploy-tui` (line 153) is now `deploy-tui: build` with the
+    ifeq switch — default uses the explicit-wheel recipe
+    (`pip install /srv/repo/zoid6/zoid6-*.whl`); `DEPLOY_EDITABLE=1`
+    uses `pip install -e .` against the source tree.
+    Note: the previous shape (`deploy-tui: install`, where
+    `install` is always editable via `pip install -e .`) was
+    **always** editable — the new default of "install from wheel"
+    is a real behavior change for `zoid6.tui` deployments run
+    without `--editable`. `zoid6.prod` (which delegates to
+    `install-fhs` → `/var/lib/zoid6/venv`) is unaffected.
+
 ## `deploy --editable` — editable install
 
 [x] **src/deploytool/lib.py** — add `--editable` to
@@ -504,6 +517,18 @@ endif
     `deploy-tui: build` target with the ifeq-wrapped install
     recipe).
 
+[x] **zoid6/Makefile** — honor `DEPLOY_EDITABLE=1`. Implemented
+    at `src/Makefile:153-172`: `deploy-tui: build` with the ifeq
+    switch — default uses the explicit-wheel recipe
+    (`pip install /srv/repo/zoid6/zoid6-*.whl`),
+    `DEPLOY_EDITABLE=1` uses `pip install -e .` against the
+    source tree. The top-level `zoid6/Makefile:79-80` `deploy-tui`
+    target is unchanged (it still delegates to `src/Makefile
+    deploy-tui`); `zoid6/Makefile:82-83` `deploy-prod` delegates
+    to `src/Makefile deploy-prod` and is also unchanged (it
+    runs `install-fhs` → `/var/lib/zoid6/venv` regardless of
+    `DEPLOY_EDITABLE`).
+
 [x] **deploytool/Makefile** — honor `DEPLOY_EDITABLE=1` for the
     `deploytool.tui` self-install. Implemented at
     `Makefile:38-60`: `install: build` now has an ifeq switch —
@@ -522,6 +547,9 @@ endif
 | `bed.prod`             | sudo umbrella, no-op          | sudo umbrella, no-op (uses `install-fhs` → `/var/lib/bed/venv`) |
 | `casino.tui`           | `pip install -e .`            | Wheel from `/srv/repo/casino/`              |
 | `casino.www`           | rsync only (no-op)            | rsync only (no-op)                          |
+| `zoid6.tui`            | `pip install -e .`            | Wheel from `/srv/repo/zoid6/`               |
+| `zoid6.www`            | rsync only (no-op)            | rsync only (no-op)                          |
+| `zoid6.prod`           | sudo umbrella, no-op          | sudo umbrella, no-op (uses `install-fhs` → `/var/lib/zoid6/venv`) |
 | `deploytool.tui`       | Editable into active venv     | Wheel from local `dist/` (deploytool's `OUTDIR` is `dist/`, not `/srv/repo/deploytool/`) |
 
 [x] **Verification** (dry-run inspection):
@@ -531,12 +559,16 @@ endif
     - `deploy --dry-run --editable bed`           → `DEPLOY_EDITABLE=1 make -C bed deploy-venv`; shows `cd .. && pip install -e .` (active venv)
     - `deploy --dry-run casino.tui`               → `make -C casino deploy-tui`; shows `pip install /srv/repo/casino/casino-*.whl`
     - `deploy --dry-run --editable casino.tui`    → `DEPLOY_EDITABLE=1 make -C casino deploy-tui`; shows `pip install -e .`
+    - `deploy --dry-run zoid6.tui`                → `make -C zoid6 deploy-tui` → `make -C zoid6/src deploy-tui`; shows `pip install /srv/repo/zoid6/zoid6-*.whl`
+    - `deploy --dry-run --editable zoid6.tui`     → `DEPLOY_EDITABLE=1 make -C zoid6 deploy-tui` → `DEPLOY_EDITABLE=1 make -C zoid6/src deploy-tui`; shows `pip install -e .`
+    - `deploy --dry-run zoid6.prod`               → `make -C zoid6 deploy-prod` → `make -C zoid6/src deploy-prod ...`; runs `install-fhs` regardless of `DEPLOY_EDITABLE`
     - `deploy --dry-run --editable bbsengine6.www` → `DEPLOY_EDITABLE=1 make -C bbsengine6 deploy-www` (www-only no-op; no `pip install` line — verified separately by reading `bbsengine6/Makefile:deploy-www`)
     - `DEPLOY_EDITABLE=1` in shell but no `--editable` flag → deploytool strips the env var; per-project Makefile falls back to wheel install (env-handling strictness verified).
 
 [x] **Update `VENV_LAYOUT`** in
-    `src/deploytool/lib.py:55-70` once the three Makefiles
-    settle — the entries for `bbsengine6`, `bed`, and `casino`
-    should reflect what the new `deploy-tui` / `deploy` targets
-    actually do (e.g. `bed` may drop its per-service venv in
-    dev mode in favor of the active venv).
+    `src/deploytool/lib.py:55-70` once the Makefiles
+    settle — the entries for `bbsengine6`, `bed`, `casino`,
+    `zoid6`, and `deploytool` should reflect what the new
+    `deploy-tui` / `deploy` targets actually do (e.g. `bed`
+    may drop its per-service venv in dev mode in favor of
+    the active venv).
