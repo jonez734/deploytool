@@ -10,8 +10,9 @@ launch event:
 - `origin` → `git@github.com:jonez734/deploytool.git`
 - Commit log on `main`: `2a96859` initial scaffolding →
   `9120024` SPECS → `1495025` README → `c3752b0` CHANGELOG →
-  (this TODO update) → (`make test` target) → (regenerated
-  `_version.py`). See [CHANGELOG.md](CHANGELOG.md).
+  `42ff9c3` TODO update (Repo status block + path ref
+  normalization). Subsequent commits add `make test` and
+  regenerate `_version.py`. See [CHANGELOG.md](CHANGELOG.md).
 - Project still lives **on disk** under
   `/home/opencode/data/work/deploytool/`, because the per-project
   `Makefile`s it orchestrates expect it there via the
