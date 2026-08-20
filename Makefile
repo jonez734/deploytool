@@ -38,8 +38,22 @@ version:
 build: version
 	cd src && $(PYTHON) -m build --outdir ../$(OUTDIR)
 
+# DEPLOY_EDITABLE is set by `deploytool --editable`. When unset,
+# deploy-tui installs deploytool from the freshly-built wheel in
+# $(OUTDIR). When set, it installs editable from the source tree.
+# Note: deploytool's $(OUTDIR) is `dist/` (local), not
+# `/srv/repo/deploytool/` — deploytool is a standalone repo
+# and publishes to PyPI from dist/, not to the per-project
+# /srv/repo/ OUTDIR that Phase 0 introduced for the other
+# projects.
+DEPLOY_EDITABLE ?=
 install: build
+ifeq ($(DEPLOY_EDITABLE),1)
+	cd src && $(PIP) install --no-cache-dir -e .
+	-rm -rf src/$(PROJECT).egg-info
+else
 	$(PIP) install --no-deps $(WHEEL)
+endif
 
 deploy-tui: install
 

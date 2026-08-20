@@ -36,6 +36,13 @@ releases bump the patch). Dates are the day the commit landed on
 - `TODO.md`: added a "Repo status" block at the top documenting the
   standalone-repo milestone, the parent monorepo relationship, and
   pointers to the in-tree and parent repos.
+- `--editable` flag is now the sole source of truth for editable
+  install mode. When `--editable` is **not** passed, deploytool
+  strips `DEPLOY_EDITABLE`, `EDITABLE`, and `DEV` from the
+  subprocess env before invoking `make` so an operator who happens
+  to have one of those vars set in their shell does not silently
+  trigger editable mode. With `--editable`, deploytool explicitly
+  sets `DEPLOY_EDITABLE=1` in the subprocess env.
 
 ## [0.0.1.dev20260820] — 2026-08-20
 
