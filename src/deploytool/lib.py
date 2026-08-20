@@ -56,11 +56,11 @@ VENV_LAYOUT = {
     "zoid6": "/var/lib/zoid6/venv",
     "bed": "/var/lib/bed/venv",
     "mistermcfeely": "/var/lib/zoid6/venv",
-    "bbsengine6": "/var/lib/zoid6/venv",
+    "bbsengine6": VENV_USER,
     "teos": "/var/lib/zoid6/venv",
     "murdermotel": "/var/lib/zoid6/venv",
     "empyre": "/var/lib/zoid6/venv",
-    "casino": "/var/lib/zoid6/venv",
+    "casino": VENV_USER,
     "achilles": "/var/lib/zoid6/venv",
     "letteredolive": "/var/lib/zoid6/venv",
     "zoidoffice": "/var/lib/zoid6/venv",
@@ -176,6 +176,13 @@ def buildargs(args=None, **kwargs):
         "--verify",
         action="store_true",
         help="run verification after deploy",
+    )
+    parser.add_argument(
+        "--editable",
+        action="store_true",
+        help="install in editable mode (pip install -e); DEPLOY_EDITABLE=1 "
+             "is exported to make so per-project Makefiles can swap wheel "
+             "install for editable install",
     )
     return parser
 
@@ -314,8 +321,13 @@ def run_make_deploy(args, project, sub=None):
     sub = MAKE_TARGET_ALIASES.get((project, sub), sub) if sub is not None else sub
     target = f"deploy-{sub}" if sub else "deploy"
     cmd = ["make", "-C", project_dir, target]
+    env = None
+    if getattr(args, "editable", False):
+        env = os.environ.copy()
+        env["DEPLOY_EDITABLE"] = "1"
     if getattr(args, "dry_run", False):
-        io.echo(f"{{yellow}}dry-run:{{/all}} {' '.join(cmd)}")
+        prefix = "DEPLOY_EDITABLE=1 " if env else ""
+        io.echo(f"{{yellow}}dry-run:{{/all}} {prefix}{' '.join(cmd)}")
         return 0
     io.echo(f"{{cyan}}running:{{/all}} {' '.join(cmd)}")
     verbose = getattr(args, "verbose", False)
@@ -323,10 +335,10 @@ def run_make_deploy(args, project, sub=None):
         if verbose:
             sys.stdout.flush()
             sys.stderr.flush()
-            proc = subprocess.Popen(cmd, stdout=1, stderr=2)
+            proc = subprocess.Popen(cmd, stdout=1, stderr=2, env=env)
             return proc.wait()
         else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
             if result.returncode != 0:
                 io.echo(f"make deploy failed: {result.stderr}", level="error")
             return result.returncode

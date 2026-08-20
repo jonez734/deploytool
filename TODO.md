@@ -438,13 +438,13 @@ deploy-tui: build
 
 ## `deploy --editable` — editable install
 
-[ ] **src/deploytool/lib.py** — add `--editable` to
+[x] **src/deploytool/lib.py** — add `--editable` to
     `buildargs()` (ArgumentParser). When set, the per-project Makefile
     should install in editable mode (`pip install -e ...`) so edits
     in the source tree are picked up on next interpreter start without
     a rebuild + reinstall.
 
-[ ] **src/deploytool/lib.py** — `run_make_deploy`
+[x] **src/deploytool/lib.py** — `run_make_deploy`
     propagates `--editable` to `make` via env var
     **`DEPLOY_EDITABLE=1`** so each per-project Makefile can swap
     `pip install $$WHEEL` for `pip install -e <source-tree>`.
@@ -490,7 +490,7 @@ deploy-tui: build
     - `deploy --dry-run --editable casino.tui`    → `pip install -e .`
     - `deploy --dry-run --editable bbsengine6.www` → rsync, **no** `pip install` line (www-only no-op)
 
-[ ] **Update `VENV_LAYOUT`** in
+[x] **Update `VENV_LAYOUT`** in
     `src/deploytool/lib.py:55-70` once the three Makefiles
     settle — the entries for `bbsengine6`, `bed`, and `casino`
     should reflect what the new `deploy-tui` / `deploy` targets

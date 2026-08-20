@@ -18,6 +18,12 @@ releases bump the patch). Dates are the day the commit landed on
   to `lib.py` registries.
 - `CHANGELOG.md` — this file.
 - `make test` target — runs `pytest tests/`.
+- `--editable` CLI flag — installs per-project Python packages in
+  editable mode (`pip install -e`) instead of from a freshly-built
+  wheel. Sets `DEPLOY_EDITABLE=1` in the `make` invocation's
+  environment; each per-project Makefile can swap wheel install for
+  editable install. Independent of `OUTDIR`: editable install uses
+  the source tree, not `/srv/repo/<project>/`.
 
 ### Changed
 - Repo is now standalone: `deploytool/` has its own `.git/` and
