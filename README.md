@@ -7,19 +7,23 @@ calls and walks them, reporting failures.
 
 - **Repo:** https://github.com/jonez734/deploytool
 - **Spec:** [SPECS.md](SPECS.md)
-- **Status:** [TODO.md](TODO.md) — Phase 0 (wheel output) and
-  Phase 1 (`--dev` flag) are open work.
+- **Status:** [TODO.md](TODO.md) — Phase 1 (`--editable` flag,
+  `DEPLOY_EDITABLE` env var, per-project wheel/editable swap) is
+  complete. Phase 2 (zoidoffice, getdate_next, backuptools) is
+  open work.
 
 ## Install
 
 `deploytool` is consumed as a wheel from PyPI-style local installs
 (via `pip install` into an active venv) or as an editable install
-from the source tree.
+from the source tree. The build target also honors
+`DEPLOY_EDITABLE=1`:
 
 ```sh
 # from the source tree
-make install           # builds the wheel into ./dist and pip-installs it
-# or, for dev (editable install, picks up source-tree changes):
+make install                 # builds the wheel into ./dist and pip-installs it
+make install DEPLOY_EDITABLE=1  # editable install from the source tree
+# or, for dev (equivalent to DEPLOY_EDITABLE=1):
 pip install -e .
 ```
 
@@ -38,6 +42,7 @@ deploy [options] project[.sub] [project[.sub] ...]
 | `--verbose` | Verbose output (default: on) |
 | `--verify` | Run post-deploy verification step |
 | `--debug` | Debug mode |
+| `--editable` | Install per-project Python packages in editable mode (`pip install -e`); sets `DEPLOY_EDITABLE=1` in the `make` env |
 
 ### Examples
 
@@ -53,6 +58,15 @@ deploy --dry-run bed.tui
 
 # deploy + verify (runs bbsengine6's blurb render test after)
 deploy --verify bbsengine6
+
+# editable install across the chain: edits in any source tree are
+# picked up on next interpreter start without a rebuild
+deploy --editable bbsengine6.tui
+deploy --editable bed
+deploy --editable casino.tui
+
+# dry-run of the editable chain (note the DEPLOY_EDITABLE=1 prefix)
+deploy --dry-run --editable bbsengine6.tui
 
 # full chain for the article2 blog
 deploy article2
@@ -78,8 +92,12 @@ make test              # run pytest tests/
 make clean             # wipe build/ dist/ *.egg-info/ __pycache__/
 ```
 
-Output lands in `./dist/` per-project (Phase 0 in TODO.md proposes
-moving this to `/srv/repo/<project>/`).
+Output lands in `./dist/` per-project. (deploytool's local
+`OUTDIR` is `dist/`, **not** `/srv/repo/deploytool/` —
+deploytool is a standalone repo and publishes to PyPI from
+`dist/`. The other projects Phase-0'd to `/srv/repo/<project>/`
+because they share an OUTDIR with their sibling repos on the
+host.)
 
 ## Tests
 
