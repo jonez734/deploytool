@@ -321,12 +321,25 @@ def run_make_deploy(args, project, sub=None):
     sub = MAKE_TARGET_ALIASES.get((project, sub), sub) if sub is not None else sub
     target = f"deploy-{sub}" if sub else "deploy"
     cmd = ["make", "-C", project_dir, target]
-    env = None
+    # Always copy the operator's env so PATH and friends are preserved,
+    # then control the editable-mode vars explicitly so deploytool is
+    # the sole source of truth (an operator who happens to have
+    # DEPLOY_EDITABLE=1 in their shell does not accidentally trigger
+    # editable mode without passing --editable).
+    env = os.environ.copy()
     if getattr(args, "editable", False):
-        env = os.environ.copy()
         env["DEPLOY_EDITABLE"] = "1"
+    else:
+        # Strip every editable-mode var (canonical + legacy aliases bed
+        # accepts) so the per-project Makefile falls back to its wheel
+        # install path. EDITABLE/DEV are bed's existing names — once
+        # bed/Makefile is updated to honor them under DEPLOY_EDITABLE,
+        # this strip keeps the operator from accidentally triggering
+        # editable mode via a stale shell var.
+        for var in ("DEPLOY_EDITABLE", "EDITABLE", "DEV"):
+            env.pop(var, None)
     if getattr(args, "dry_run", False):
-        prefix = "DEPLOY_EDITABLE=1 " if env else ""
+        prefix = "DEPLOY_EDITABLE=1 " if getattr(args, "editable", False) else ""
         io.echo(f"{{yellow}}dry-run:{{/all}} {prefix}{' '.join(cmd)}")
         return 0
     io.echo(f"{{cyan}}running:{{/all}} {' '.join(cmd)}")
