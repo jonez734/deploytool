@@ -1,8 +1,33 @@
 # deploytool — TODO
 
+## Repo status (2026-08-20)
+
+This repo is **standalone** as of 2026-08-20. It is no longer tracked
+as part of the parent monorepo at `/home/opencode/data/work/`; that
+tree now lists `deploytool/` in its `.gitignore`. Standalone-repo
+launch event:
+
+- `origin` → `git@github.com:jonez734/deploytool.git`
+- Commit log on `main`: `2a96859` initial scaffolding →
+  `9120024` SPECS → `1495025` README → `c3752b0` CHANGELOG →
+  (this TODO update) → (`make test` target) → (regenerated
+  `_version.py`). See [CHANGELOG.md](CHANGELOG.md).
+- Project still lives **on disk** under
+  `/home/opencode/data/work/deploytool/`, because the per-project
+  `Makefile`s it orchestrates expect it there via the
+  `SOURCE_BASE` convention documented in `SPECS.md §6`. The
+  standalone `.git/` is local to that path; the parent's tree
+  ignores it.
+
+Sister projects under `/home/opencode/data/work/` (e.g. `bed/`,
+`bbsengine6/`, `casino/`) are siblings of `deploytool/` in the
+same monorepo on disk; they each have their own publish workflow
+and are not in scope for this repo's docs beyond what `lib.py`
+references.
+
 [x] Default sub-target semantics. Resolved 2026-08-20: `deploy <project>`
     with no sub no longer picks `targets[0]` — it runs every sub in
-    `TARGETS`. `TARGETS` at `deploytool/src/deploytool/lib.py:96-106` is
+    `TARGETS`. `TARGETS` at `src/deploytool/lib.py:96-106` is
     now an ordered list of subs to deploy, not a default-and-alternates
     registry. Caller can still pin a single sub (`deploy foo.tui`) to
     restrict.
@@ -21,7 +46,7 @@
     ```
 
     **Exception:** `prod` is opt-in — auto-expanded `prod` is dropped from
-    the deploy at `deploytool/src/deploytool/lib.py:296` unless the user
+    the deploy at `src/deploytool/lib.py:296` unless the user
     (or a transitive explicit dep) named it. `prod` is the sudo umbrella
     install for bed (`bed/Makefile:220-221`) and zoid6 (`zoid6/src/Makefile`
     `deploy-prod: install-fhs`) and shouldn't run by default. `deploy
@@ -37,7 +62,7 @@
 [x] `resolve()` collapsed multiple sub-targets of the same project to the
     last one in a single deploy call. Resolved 2026-08-20 by changing
     `project_info` from `dict[str, str]` to `dict[str, list[str]]` in
-    `deploytool/src/deploytool/lib.py:176-263` and rebuilding the topo
+    `src/deploytool/lib.py:176-263` and rebuilding the topo
     sort to seed one `visit()` call per requested sub. Plus a second
     dedup pass after `MAKE_TARGET_ALIASES` resolution so `bed.tui` and
     `bed.venv` (which both resolve to `deploy-venv`) don't double-run.
@@ -45,7 +70,7 @@
     and expecting `bbsengine6.tui, bbsengine6.www, article2.tui,
     article2.www`.
 
-[ ] `VENV_LAYOUT` at `deploytool/src/deploytool/lib.py:55-70` hardcodes
+[ ] `VENV_LAYOUT` at `src/deploytool/lib.py:55-70` hardcodes
     `/var/lib/zoid6/venv` for six packages whose Makefiles do NOT
     actually install there. The registry is documentation-only (per
     `lib.py:53-54`: "Registry only: deploytool does not plumb venv
@@ -88,7 +113,7 @@
     `"/var/lib/zoid6/venv"` to `"/var/lib/mistermcfeely/venv"` to
     match the new Makefile default.
 
-    Verification: `git diff deploytool/src/deploytool/lib.py` shows
+    Verification: `git diff src/deploytool/lib.py` shows
     six `"/var/lib/zoid6/venv"` → `VENV_USER` substitutions plus the
     sentinel comment at `lib.py:49-50`, nothing else.
 
@@ -133,7 +158,7 @@
     `make` invocations from `bbsengine6/Makefile`, and the registry
     no longer claims `bbsengine6` lives in `/var/lib/zoid6/venv`.
 
-[ ] The docstring at `deploytool/src/deploytool/lib.py:49-54`
+[ ] The docstring at `src/deploytool/lib.py:49-54`
     explains `VENV_USER` and `VENV_LAYOUT` but does not warn the
     reader that the registry values are claims about where each
     project installs, which may not match the per-project Makefile
@@ -372,13 +397,13 @@ deploy-tui: build
 
 ## `deploy --dev` — editable install
 
-[ ] **deploytool/src/deploytool/lib.py** — add `--dev` to
+[ ] **src/deploytool/lib.py** — add `--dev` to
     `buildargs()` (ArgumentParser). When set, the per-project Makefile
     should install in editable mode (`pip install -e ...`) so edits
     in the source tree are picked up on next interpreter start without
     a rebuild + reinstall.
 
-[ ] **deploytool/src/deploytool/lib.py** — `run_make_deploy`
+[ ] **src/deploytool/lib.py** — `run_make_deploy`
     propagates `--dev` to `make` via an env var (suggested name:
     `DEPLOY_DEV=1`) so each per-project Makefile can swap
     `pip install $$WHEEL` for `pip install -e <source-tree>`.
@@ -406,7 +431,7 @@ deploy-tui: build
     - `deploy --dry-run --dev casino.tui`      → `pip install -e .`
 
 [ ] **Update `VENV_LAYOUT`** in
-    `deploytool/src/deploytool/lib.py:55-70` once the three Makefiles
+    `src/deploytool/lib.py:55-70` once the three Makefiles
     settle — the entries for `bbsengine6`, `bed`, and `casino`
     should reflect what the new `deploy-tui` / `deploy` targets
     actually do (e.g. `bed` may drop its per-service venv in
