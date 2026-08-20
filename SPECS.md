@@ -27,9 +27,47 @@ deploy [options] project[.sub] [project[.sub] ...]
 | `--verbose` | Verbose output (default: on) |
 | `--verify` | Run post-deploy verification step after the deploy chain |
 | `--debug` | Debug mode |
+| `--editable` | Install per-project Python packages in editable mode (`pip install -e`). Sets `DEPLOY_EDITABLE=1` in the `make` invocation's environment so each per-project Makefile can swap wheel install for editable install. See §2.1. |
 
 A bare `deploy foo` (no sub-target) runs every entry in
 `TARGETS[foo]`, not just the first. `deploy foo.tui` pins a single sub.
+
+### 2.1 `--editable` semantics
+
+`--editable` flips the install mode across every `deploy-tui`-style
+target in the chain:
+
+- **Default (no `--editable`)**: each project's `deploy-tui`
+  target installs the most-recently-built wheel from
+  `/srv/repo/<project>/<project>-*.whl` into the active venv
+  (or `/var/lib/<project>/venv` for projects with a per-service
+  venv). The wheel filename embeds the version from
+  `pyproject.toml`'s `[tool.setuptools.dynamic] version = ...`
+  attribute, so the glob omits the version stamp. Recipes pick
+  the newest entry with `ls -t | head -1`.
+- **`--editable` set**: each project's `deploy-tui` target
+  installs editable from the source tree (`pip install -e ...`).
+  Source-tree edits are picked up by the next interpreter start
+  without a rebuild + reinstall. Independent of `OUTDIR` — the
+  editable install path is the source tree, not `/srv/repo/`.
+
+Mechanism: `lib.py:319-347` (`run_make_deploy`) sets
+`DEPLOY_EDITABLE=1` in the subprocess env when `--editable` is
+passed. When `--editable` is **not** passed, deploytool is the
+sole source of truth: it copies `os.environ` and then explicitly
+**strips** `DEPLOY_EDITABLE`, `EDITABLE`, and `DEV` from the
+copied dict, so an operator who happens to have one of those vars
+set in their shell does not accidentally trigger editable mode.
+Per-project Makefiles should treat any of these env vars as
+untrusted when deploytool is the caller.
+
+Why strip `EDITABLE` and `DEV` even though they are bed-only
+legacy names: bed's Makefile accepts all three (canonical
+`EDITABLE`, deploytool's `DEPLOY_EDITABLE`, and the legacy
+`DEV=1`). If deploytool only stripped `DEPLOY_EDITABLE`, a stray
+`EDITABLE=1` or `DEV=1` in the operator's shell could still
+trigger bed's editable path without `--editable`. The three-way
+strip closes that gap.
 
 ## 3. Dependency graph
 
