@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deploytool"
+dynamic = ["version"]
+description = "Deploy tool for zoidtechnologies.com projects"
+requires-python = ">=3.9,<3.14"
+license = "GPL-2.0-or-later"
+authors = [
+    { name = "zoidtechnologies.com", email = "deploytool@projects.zoidtechnologies.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "bbsengine6",
+]
+
+[project.scripts]
+deploy = "deploytool.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+
+[project.urls]
+Homepage = "http://projects.zoidtechnologies.com/deploytool/"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["deploytool*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "deploytool._version.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "off"
+reportMissingTypeHints = false
+reportGeneralTypeIssues = false
+reportOptionalMemberAccess = false
+reportAttributeAccessIssue = false
+reportCallIssue = false
+reportReturnType = false
