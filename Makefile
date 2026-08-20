@@ -10,7 +10,7 @@ VENV_GROUP ?= $(USER)
 
 PIP ?= $(PYTHON) -m pip
 
-.PHONY: all clean build version install deploy-tui install-venv uninstall-venv
+.PHONY: all clean build version install deploy-tui install-venv uninstall-venv test
 
 all: help
 
@@ -21,6 +21,7 @@ help:
 	@echo "  version  Stamp src/$(PROJECT)/_version.py with date + git hash"
 	@echo "  build    Build sdist+wheel into $(OUTDIR)"
 	@echo "  install  Install built wheel from $(OUTDIR) into active venv"
+	@echo "  test     Run pytest tests/"
 	@echo "  clean    Remove build artifacts"
 
 clean:
@@ -41,6 +42,9 @@ install: build
 	$(PIP) install --no-deps $(WHEEL)
 
 deploy-tui: install
+
+test:
+	$(PYTHON) -m pytest tests/
 
 install-venv:
 	@command -v sudo >/dev/null 2>&1 || { echo "Error: sudo required"; exit 1; }
