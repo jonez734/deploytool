@@ -43,6 +43,25 @@ releases bump the patch). Dates are the day the commit landed on
   to have one of those vars set in their shell does not silently
   trigger editable mode. With `--editable`, deploytool explicitly
   sets `DEPLOY_EDITABLE=1` in the subprocess env.
+- `run_make_deploy` and `run_verify` now raise
+  `deploytool.lib.DeployFailed(rc, label)` on any non-zero subprocess
+  exit, subprocess timeout, or environment error (was: log-and-continue
+  in `run_verify`; log-and-return-rc in `run_make_deploy`). `main.main()`
+  catches the exception and returns 1 with a structured abort message.
+  The chain still stops at the failing project; verify failures no
+  longer silently report `deploy complete`.
+- Both `run_make_deploy` and `run_verify` are hardened: explicit
+  `encoding="utf-8"`, `errors="replace"`, `timeout=--timeout` (default
+  600s), `start_new_session=True`; narrow exception handling that
+  propagates `KeyboardInterrupt` and `SystemExit` instead of
+  swallowing them; structured error messages that include the failing
+  command and (for verify) cwd.
+- `--verbose` CLI flag removed. `run_make_deploy` always captures
+  stdout/stderr and prints stdout on success, stderr on failure. The
+  flag was the only consumer of `args.verbose`; the removal is safe.
+- `--timeout SECONDS` CLI flag added (default
+  `DEFAULT_TIMEOUT_SECONDS` = 600s). Per-step subprocess timeout;
+  timeout expiry raises `DeployFailed(rc=-1, label)`.
 
 ## [0.0.1.dev20260820] — 2026-08-20
 
