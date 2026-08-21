@@ -12,6 +12,21 @@ from deploytool._version import __version__
 PACKAGENAME = "deploytool"
 SOURCE_BASE = "/home/opencode/data/work"
 DEFAULT_HOST = "merlin"
+DEFAULT_TIMEOUT_SECONDS = 600
+
+
+class DeployFailed(Exception):
+    """Raised when a deploy step (make subprocess or verify) exits non-zero.
+
+    Carries the failing return code and the step's user-facing label so
+    main() can surface a single, structured abort message and tests can
+    assert on the failure without running real make.
+    """
+
+    def __init__(self, rc, label):
+        self.rc = rc
+        self.label = label
+        super().__init__(f"deploy failed for {label} (rc={rc})")
 
 # Projects that live outside {SOURCE_BASE}/{name}; resolved relative to SOURCE_BASE.
 PROJECT_DIRS = {
@@ -167,10 +182,11 @@ def buildargs(args=None, **kwargs):
         help="print commands without executing",
     )
     parser.add_argument(
-        "--verbose",
-        action="store_true",
-        default=True,
-        help="verbose output",
+        "--timeout",
+        type=int,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        metavar="SECONDS",
+        help="per-step subprocess timeout in seconds (default: %(default)s)",
     )
     parser.add_argument(
         "--verify",
@@ -316,11 +332,73 @@ def resolve(projects):
     return final
 
 
+def _run_subprocess(cmd, *, cwd=None, timeout, env=None, label):
+    """Run `cmd` with subprocess hardening; raise DeployFailed on failure.
+
+    Contract:
+      - returns (returncode, stdout, stderr) on success
+      - raises DeployFailed(rc=-1, label) on TimeoutExpired, FileNotFoundError,
+        OSError, or any non-zero returncode
+      - does NOT catch KeyboardInterrupt or SystemExit — let them propagate
+      - uses encoding="utf-8" + errors="replace" so non-UTF8 subprocess
+        output can't crash the parent with UnicodeDecodeError
+      - uses start_new_session=True so the child has its own process group,
+        which makes cleanup on signal more reliable
+    """
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            timeout=timeout,
+            check=False,
+            start_new_session=True,
+        )
+    except subprocess.TimeoutExpired as e:
+        io.echo(
+            f"{{bold}}{label}{{/all}} timed out after {timeout}s: {' '.join(cmd)}",
+            level="error",
+        )
+        raise DeployFailed(-1, label) from e
+    except FileNotFoundError as e:
+        io.echo(
+            f"{{bold}}{label}{{/all}} command not found: {e.filename or e}",
+            level="error",
+        )
+        raise DeployFailed(-1, label) from e
+    except OSError as e:
+        io.echo(f"{{bold}}{label}{{/all}} OS error: {e}", level="error")
+        raise DeployFailed(-1, label) from e
+
+    if result.returncode != 0:
+        io.echo(
+            f"{{bold}}{label}{{/all}} exited with rc={result.returncode}",
+            level="error",
+        )
+        if result.stderr:
+            io.echo(result.stderr, level="error")
+        raise DeployFailed(result.returncode, label)
+
+    return result
+
+
 def run_make_deploy(args, project, sub=None):
+    """Run `make deploy[-sub]` for `project.sub`; abort the deploy on failure.
+
+    Returns 0 on success. Raises DeployFailed(rc, label) on any non-zero
+    subprocess exit, timeout, or environment error. KeyboardInterrupt and
+    SystemExit propagate to the caller.
+    """
     project_dir = f"{SOURCE_BASE}/{PROJECT_DIRS.get(project, project)}"
     sub = MAKE_TARGET_ALIASES.get((project, sub), sub) if sub is not None else sub
     target = f"deploy-{sub}" if sub else "deploy"
     cmd = ["make", "-C", project_dir, target]
+    label = f"{project}.{sub}" if sub else project
+
     # Always copy the operator's env so PATH and friends are preserved,
     # then control the editable-mode vars explicitly so deploytool is
     # the sole source of truth (an operator who happens to have
@@ -338,41 +416,41 @@ def run_make_deploy(args, project, sub=None):
         # editable mode via a stale shell var.
         for var in ("DEPLOY_EDITABLE", "EDITABLE", "DEV"):
             env.pop(var, None)
+
     if getattr(args, "dry_run", False):
-        prefix = "DEPLOY_EDITABLE=1 " if getattr(args, "editable", False) else ""
+        prefix = "DEPLOY_EDITABLE=1 " if env.get("DEPLOY_EDITABLE") == "1" else ""
         io.echo(f"{{yellow}}dry-run:{{/all}} {prefix}{' '.join(cmd)}")
         return 0
+
     io.echo(f"{{cyan}}running:{{/all}} {' '.join(cmd)}")
-    verbose = getattr(args, "verbose", False)
-    try:
-        if verbose:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            proc = subprocess.Popen(cmd, stdout=1, stderr=2, env=env)
-            return proc.wait()
-        else:
-            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
-            if result.returncode != 0:
-                io.echo(f"make deploy failed: {result.stderr}", level="error")
-            return result.returncode
-    except Exception as e:
-        io.echo_traceback(f"make deploy exception: {e}")
-        return -1
+    timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
+    result = _run_subprocess(cmd, timeout=timeout, env=env, label=label)
+    if result.stdout:
+        io.echo(result.stdout)
+    return 0
 
 
 def run_verify(args, projects):
-    if "bbsengine6" in projects:
-        io.echo("{cyan}verifying bbsengine6...{/all}")
-        cmd = ["php", "test_blurb_render.php"]
-        project_dir = f"{SOURCE_BASE}/bbsengine6/php"
-        if getattr(args, "dry_run", False):
-            io.echo(f"{{yellow}}dry-run:{{/all}} {' '.join(cmd)}")
-            return
-        try:
-            result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
-            if result.returncode != 0:
-                io.echo(f"verification failed: {result.stderr}", level="error")
-            else:
-                io.echo("{green}verification passed{/all}")
-        except Exception as e:
-            io.echo_traceback(f"verification exception: {e}")
+    """Run the post-deploy verification step; abort on non-zero exit.
+
+    Today only `bbsengine6` has a verify step (`php test_blurb_render.php`
+    in `bbsengine6/php/`). Same exception contract as run_make_deploy:
+    returns 0 on success, raises DeployFailed on any non-zero exit,
+    timeout, or environment error. Skips silently when `bbsengine6` is
+    not in `projects`.
+    """
+    if "bbsengine6" not in projects:
+        return 0
+    label = "verify.bbsengine6"
+    cmd = ["php", "test_blurb_render.php"]
+    project_dir = f"{SOURCE_BASE}/bbsengine6/php"
+    timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
+
+    if getattr(args, "dry_run", False):
+        io.echo(f"{{yellow}}dry-run:{{/all}} {' '.join(cmd)} (cwd={project_dir})")
+        return 0
+
+    io.echo(f"{{cyan}}running:{{/all}} {' '.join(cmd)} (cwd={project_dir})")
+    _run_subprocess(cmd, cwd=project_dir, timeout=timeout, label=label)
+    io.echo("{green}verification passed{/all}")
+    return 0
