@@ -38,19 +38,27 @@ def main(args, **kwargs):
 
     for project, sub in projects:
         label = f"{project}.{sub}" if sub else project
-        io.echo(f"\n{{bold}}=== {label} ==={{/all}}")
-        rc = lib.run_make_deploy(args, project, sub)
-        if rc != 0:
+        io.echo(f"{{f6}}{{bold}}=== {label} ==={{/all}}")
+        try:
+            lib.run_make_deploy(args, project, sub)
+        except lib.DeployFailed as e:
             io.echo(
-                f"deploy failed for {{bold}}{label}{{/all}}",
+                f"deploy aborted: {{bold}}{e.label}{{/all}} exited with rc={e.rc}",
                 level="error",
             )
             return 1
 
     if getattr(args, "verify", False):
-        io.echo(f"\n{{bold}}=== verify ==={{/all}}")
+        io.echo(f"{{f6}}{{bold}}=== verify ==={{/all}}")
         project_names = [name for name, _ in projects]
-        lib.run_verify(args, project_names)
+        try:
+            lib.run_verify(args, project_names)
+        except lib.DeployFailed as e:
+            io.echo(
+                f"deploy aborted: {{bold}}{e.label}{{/all}} exited with rc={e.rc}",
+                level="error",
+            )
+            return 1
 
-    io.echo(f"\n{{green}}deploy complete{{/all}}")
+    io.echo(f"{{f6}}{{green}}deploy complete{{/all}}")
     return 0
