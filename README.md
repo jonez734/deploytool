@@ -39,7 +39,7 @@ deploy [options] project[.sub] [project[.sub] ...]
 |---|---|
 | `--host HOST` | Target host (default: `merlin`) |
 | `--dry-run` | Print commands instead of running |
-| `--verbose` | Verbose output (default: on) |
+| `--timeout SECONDS` | Per-step subprocess timeout (default: `600`); expired timeouts abort the deploy |
 | `--verify` | Run post-deploy verification step |
 | `--debug` | Debug mode |
 | `--editable` | Install per-project Python packages in editable mode (`pip install -e`); sets `DEPLOY_EDITABLE=1` in the `make` env |
