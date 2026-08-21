@@ -24,7 +24,7 @@ deploy [options] project[.sub] [project[.sub] ...]
 |---|---|
 | `--host HOST` | Target host for ssh-based deploys (default: `merlin`) |
 | `--dry-run` | Print commands instead of executing |
-| `--verbose` | Verbose output (default: on) |
+| `--timeout SECONDS` | Per-step subprocess timeout in seconds (default: `600`); expired timeouts abort the deploy with `DeployFailed(rc=-1)` |
 | `--verify` | Run post-deploy verification step after the deploy chain |
 | `--debug` | Debug mode |
 | `--editable` | Install per-project Python packages in editable mode (`pip install -e`). Sets `DEPLOY_EDITABLE=1` in the `make` invocation's environment so each per-project Makefile can swap wheel install for editable install. See §2.1. |
@@ -181,3 +181,34 @@ test-fixture skip logic in the test files).
   `dependencies`). deploytool does NOT orchestrate `bbsengine6`'s own
   install — that runs via `pip` when bbsengine6's wheel is installed
   by the per-project `deploy-tui` targets.
+
+## 11. Abort behavior
+
+Both `lib.run_make_deploy` and `lib.run_verify` abort the deploy by
+raising `deploytool.lib.DeployFailed(rc, label)` on:
+
+- non-zero subprocess returncode (`rc` = the subprocess rc);
+- `subprocess.TimeoutExpired` (`rc = -1`; timeout is `args.timeout`,
+  default `DEFAULT_TIMEOUT_SECONDS` = 600s — overridable via
+  `--timeout`);
+- `FileNotFoundError` (`rc = -1`; e.g. `make` or `php` not installed);
+- `OSError` (`rc = -1`).
+
+`KeyboardInterrupt` and other `BaseException`s are NOT caught — the
+user can Ctrl-C and the deploy halts cleanly.
+
+Both functions run subprocesses with explicit `encoding="utf-8"`,
+`errors="replace"`, `timeout=args.timeout`, `check=False`, and
+`start_new_session=True` so:
+
+- non-UTF8 subprocess output cannot crash the parent with
+  `UnicodeDecodeError`;
+- hung steps do not block the chain forever;
+- the child has its own process group, which makes cleanup on signal
+  more reliable.
+
+`main.main()` catches `DeployFailed` once per call site (once around
+the make loop, once around the verify step) and returns 1 with a
+single, structured abort message that includes the failing step's
+`label` and `rc`. The chain stops at the failing project; a failed
+verify step no longer reports `deploy complete`.
