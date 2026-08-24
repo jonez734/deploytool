@@ -28,9 +28,17 @@ deploy [options] project[.sub] [project[.sub] ...]
 | `--verify` | Run post-deploy verification step after the deploy chain |
 | `--debug` | Debug mode |
 | `--editable` | Install per-project Python packages in editable mode (`pip install -e`). Sets `DEPLOY_EDITABLE=1` in the `make` invocation's environment so each per-project Makefile can swap wheel install for editable install. See §2.1. |
+| `--with-deps` | Include transitive dependencies in the chain. Default `false` — only caller-named projects run (no transitive dep walking). Bare-base invocation (`deploy foo` with no `.sub`) under `--with-deps` also auto-expands to every entry in `TARGETS[foo]`. Bare-base invocation without `--with-deps` is ambiguous when `len(TARGETS[foo]) > 1`: the resolver lists the subs and exits `1`. See §2.2. |
 
-A bare `deploy foo` (no sub-target) runs every entry in
-`TARGETS[foo]`, not just the first. `deploy foo.tui` pins a single sub.
+Bare-base invocation rules (see §4 Sub-targets for detail):
+
+- `deploy foo.tui` — pin explicit subs; no transitive deps unless
+  `--with-deps` is also set.
+- `deploy foo` (bare) — ambiguous when `TARGETS[foo]` has more than
+  one entry. Exits `1` listing the subs. Pass `--with-deps` to
+  auto-expand instead (see §2.2).
+- `deploy foo` (bare, `TARGETS[foo]` is empty) — runs the bare
+  `make deploy` target; no ambiguity possible.
 
 ### 2.1 `--editable` semantics
 
@@ -51,7 +59,7 @@ target in the chain:
   without a rebuild + reinstall. Independent of `OUTDIR` — the
   editable install path is the source tree, not `/srv/repo/`.
 
-Mechanism: `lib.py:319-347` (`run_make_deploy`) sets
+Mechanism: `lib.py:428-470` (`run_make_deploy`) sets
 `DEPLOY_EDITABLE=1` in the subprocess env when `--editable` is
 passed. When `--editable` is **not** passed, deploytool is the
 sole source of truth: it copies `os.environ` and then explicitly
@@ -69,10 +77,53 @@ legacy names: bed's Makefile accepts all three (canonical
 trigger bed's editable path without `--editable`. The three-way
 strip closes that gap.
 
+### 2.2 `--with-deps` semantics
+
+`--with-deps` controls two orthogonal behaviors at once: whether
+transitive dependencies are walked, and whether bare-base invocation
+auto-expands to all subs.
+
+**Without `--with-deps` (default):**
+
+- The dep walker (`lib.resolve` `visit()` at `lib.py:310-348`) skips
+  both `DEPENDENCIES` and `CONDITIONAL_DEPENDENCIES`. Only the
+  caller-named projects run.
+- Bare-base invocation (`deploy foo` with no `.sub`) is **ambiguous**
+  when `TARGETS[foo]` has more than one entry: the resolver prints
+  the available subs and calls `sys.exit(1)`. The caller must name a
+  sub (`deploy foo.tui`) or pass `--with-deps`.
+- Projects with a single entry in `TARGETS` (e.g. `getdate_next ->
+  ["tui"]`) auto-pick that one sub on bare invocation — no
+  ambiguity possible.
+- Projects with no `TARGETS` entry (e.g. `mistermcfeely`,
+  `asimov`, `letteredolive`) run the bare `make deploy` target
+  unconditionally on bare invocation.
+
+**With `--with-deps`:**
+
+- The dep walker pulls in every transitive dependency declared in
+  `DEPENDENCIES` and the conditional-deps matching each requested
+  sub.
+- Bare-base invocation auto-expands to every entry in `TARGETS[foo]`
+  — the "build the whole thing" shortcut. `deploy --with-deps casino`
+  runs both `casino.tui` and `casino.www` and walks their full dep
+  chains (`bbsengine6.{tui, www}`, `bed.tui`, etc.).
+- The auto-expansion populates `explicit_subs` for every subs in
+  `TARGETS[foo]`. This interacts with the `prod` opt-in drop
+  (§3.2): auto-expanded `prod` subs survive the drop because the
+  drop gate (`lib.py:362`) only skips entries NOT in
+  `explicit_subs`.
+
+`--with-deps` is orthogonal to `--editable`. `deploy --with-deps
+--editable foo.tui` walks the chain and installs every package
+editable. `--with-deps` does NOT plumb a `DEPLOY_WITH_DEPS=1` env
+var into `make` invocations — the flag is purely a deploytool-side
+resolver concern; per-project Makefiles don't need to know.
+
 ## 3. Dependency graph
 
-Encoded in `lib.py:21-39` (`DEPENDENCIES`) and
-`lib.py:85-104` (`CONDITIONAL_DEPENDENCIES`). Rules:
+Encoded in `lib.py:36-54` (`DEPENDENCIES`) and
+`lib.py:100-119` (`CONDITIONAL_DEPENDENCIES`). Rules:
 
 1. `DEPENDENCIES[base]` — unconditional transitive deps; resolved with
    no sub-target.
@@ -95,26 +146,49 @@ in the final order.
 ### 3.2 `prod` opt-in
 
 `prod` is a sudo-umbrella install for `bed` and `zoid6` and must not
-run by default. `lib.py:300-301` drops auto-expanded `prod` entries
+run by default. `lib.py:362` drops auto-expanded `prod` entries
 from the final order; only `prod` subs the caller (or a transitive
-explicit dep) named explicitly survive.
+explicit dep, or `--with-deps` auto-expansion at `lib.py:266-271`)
+named explicitly survive.
 
 ## 4. Sub-targets
 
-Encoded in `lib.py:106-118` (`TARGETS`). A bare sub is `[None]`,
+Encoded in `lib.py:121-133` (`TARGETS`). A bare sub is `[None]`,
 meaning "no `deploy-<sub>` suffix; run the project's bare `deploy`
-target." Projects with an entry in `TARGETS` get all listed subs
-auto-expanded when the caller asks for the bare base.
+target." Project records in `TARGETS` look like:
+
+```
+"casino": ["tui", "www"],
+"bed":    ["tui", "venv", "prod"],
+"getdate_next": ["tui"],
+```
+
+Bare-base invocation semantics (see `lib.resolve` lines
+`lib.py:217-308`):
+
+- `deploy proj.tui` (or any explicit sub) — pins that sub. No
+  transitive deps unless `--with-deps` is set (see §2.2).
+- `deploy proj` (bare, no `--with-deps`) — ambiguous when
+  `len(TARGETS[proj]) > 1`. The resolver prints the available
+  subs and exits `1`. Caller must name a sub or pass `--with-deps`.
+- `deploy proj` (bare, single-sub `TARGETS`) — auto-picks that
+  one sub. No ambiguity to begin with (e.g. `deploy getdate_next`
+  → `getdate_next.tui`).
+- `deploy proj` (bare, no `TARGETS[proj]` entry) — runs the bare
+  `make deploy` target; nothing to choose.
+- `deploy --with-deps proj` (bare, `--with-deps` set) — auto-
+  expands to every entry in `TARGETS[proj]` AND walks the full
+  transitive dep chain.
 
 Sub names are user-facing. The actual `make` target name may differ —
 see §5.
 
 ## 5. Make target aliases
 
-Encoded in `lib.py:123-126` (`MAKE_TARGET_ALIASES`). Maps a
+Encoded in `lib.py:138-141` (`MAKE_TARGET_ALIASES`). Maps a
 `(project, sub)` pair to the `deploy-<sub>` make target name to run
 when the user requested that sub. Applied by `run_make_deploy`
-(`lib.py:312-336`) before constructing the cmd vector. Currently:
+(`lib.py:428-470`) before constructing the cmd vector. Currently:
 
 - `("bed", "tui")` → `"venv"` — `bed` has no `deploy-tui` target;
   its `tui` is a Python venv install.
@@ -124,15 +198,15 @@ Bare projects (sub is `None`) get `deploy` as the make target.
 
 ## 6. Aliases
 
-Encoded in `lib.py:41-43` (`ALIASES`) and `lib.py:45-47`
+Encoded in `lib.py:56-58` (`ALIASES`) and `lib.py:60-62`
 (`ALIAS_PATTERNS`). A user-facing project name that should be
 canonicalized before any other processing. Pattern-based aliases
 apply first; literal aliases second.
 
 ## 7. Venv registry
 
-Encoded in `lib.py:49-70` (`VENV_USER`, `VENV_LAYOUT`).
-`get_venv_layout` (`lib.py:133-147`) resolves a project's venv:
+Encoded in `lib.py:65-85` (`VENV_USER`, `VENV_LAYOUT`).
+`get_venv_layout` (`lib.py:148-162`) resolves a project's venv:
 
 1. Apply `ALIASES` to canonicalize the project name.
 2. Look up `VENV_LAYOUT[canonical]`.
@@ -151,7 +225,7 @@ two sub-target-aware entries that should be removed entirely.
 
 ## 8. Project directory resolution
 
-`PROJECT_DIRS` (`lib.py:17-19`) lists projects whose source tree
+`PROJECT_DIRS` (`lib.py:32-34`) lists projects whose source tree
 lives somewhere other than `SOURCE_BASE/<name>`. Currently only
 `article2` (which lives under `yummyjam/`). `run_make_deploy`
 applies the override at cmd-construction time.

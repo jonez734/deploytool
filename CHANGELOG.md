@@ -8,6 +8,34 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Added
+- `--with-deps` CLI flag (default `false`). When set, the resolver
+  walks transitive dependencies for every requested project AND
+  bare-base invocation (`deploy foo` with no `.sub`) auto-expands
+  to every entry in `TARGETS[foo]`. When unset (the default), only
+  the projects the caller explicitly named run — no transitive
+  dep walking. Combined with `--editable`, installs each package
+  editable from the source tree. See README and `SPECS.md §2.2`.
+- `test_deploy_with_deps.py` — regression coverage for the
+  `--with-deps` flag and the bare-base ambiguity rules. Includes
+  bare `casino`/`bed`/`multi-project` listing-then-exit,
+  single-sub auto-pick, full-chain expansion under `--with-deps`,
+  and CLI parser round-trips.
+
+### Changed
+- Bare-project invocation semantics (`deploy foo` with no `.sub`)
+  are now **ambiguous** when `TARGETS[foo]` has more than one
+  entry: the resolver lists the available sub-targets and exits
+  `1`. The previous behavior (auto-expanding every sub in
+  `TARGETS[foo]`) was removed. Callers must now specify
+  sub-targets explicitly (`deploy bbsengine6.tui bbsengine6.www`)
+  or pass `--with-deps` to opt into the "build the whole thing"
+  auto-expand.
+- `lib.resolve(projects, with_deps=False)` — added `with_deps`
+  kwarg. Default `False` preserves the new bare-no-ambiguity
+  semantics. `main.main()` (`src/deploytool/main.py:19`) passes
+  `args.with_deps` through. The dep walker (`visit()` at
+  `lib.py:310-348`) skips both `DEPENDENCIES` and
+  `CONDITIONAL_DEPENDENCIES` walks when `with_deps` is False.
 - `SPECS.md` — design specs extracted from `src/deploytool/lib.py`,
   with cross-references to specific line ranges for each registry
   (CLI flags, dependency graph, sub-targets, make aliases, venv

@@ -43,44 +43,78 @@ deploy [options] project[.sub] [project[.sub] ...]
 | `--verify` | Run post-deploy verification step |
 | `--debug` | Debug mode |
 | `--editable` | Install per-project Python packages in editable mode (`pip install -e`); sets `DEPLOY_EDITABLE=1` in the `make` env |
+| `--with-deps` | Include transitive dependencies in the chain. Without it, only explicitly named projects are built (default: `false`). Bare bases (no `.sub`) under `--with-deps` also auto-expand to all subs. Bare bases without `--with-deps` list the available subs and exit `1`. |
 
 ### Examples
 
 ```sh
-# deploy everything for bbsengine6 (tui + www)
-deploy bbsengine6
+# build only what was named: casino.tui (no bbsengine6, no bed pulled in)
+deploy casino.tui
 
-# deploy only the tui wheel for bbsengine6 and its conditional deps
-deploy bbsengine6.tui
+# both subs for casino, no transitive deps
+deploy casino.tui casino.www
 
-# dry-run: see the full chain without executing
-deploy --dry-run bed.tui
+# bare base is AMBIGUOUS without --with-deps: errors out listing subs
+deploy casino
+# -> exit 1 with: casino has multiple sub-targets (tui, www); choose ...
+
+# bare base with --with-deps is the "build the whole thing" shortcut:
+# auto-expands subs AND walks the full dep chain
+deploy --with-deps casino
+# -> bbsengine6.tui, bbsengine6.www, bed.tui, casino.tui, casino.www
+
+# explicit sub under --with-deps: chain for that sub
+deploy --with-deps casino.tui
+# -> bbsengine6.tui, bed.tui, casino.tui
+
+# dry-run: see the chain without executing
+deploy --dry-run casino.tui
 
 # deploy + verify (runs bbsengine6's blurb render test after)
-deploy --verify bbsengine6
+deploy --verify bbsengine6.www
 
 # editable install across the chain: edits in any source tree are
 # picked up on next interpreter start without a rebuild
-deploy --editable bbsengine6.tui
-deploy --editable bed
-deploy --editable casino.tui
+deploy --editable --with-deps casino.tui
 
-# dry-run of the editable chain (note the DEPLOY_EDITABLE=1 prefix)
-deploy --dry-run --editable bbsengine6.tui
+# single-sub project has no ambiguity: `deploy getdate_next` -> tui
+deploy getdate_next
 
-# full chain for the article2 blog
-deploy article2
+# bare project (no TARGETS) runs unconditionally
+deploy mistermcfeely
 ```
 
 ### Sub-target semantics
 
-A bare `deploy foo` (no `.sub`) runs every entry in
-`TARGETS[foo]` — e.g., `deploy bbsengine6` runs both `tui` and
-`www`. `deploy foo.tui` pins a single sub.
+For each project, `TARGETS[proj]` lists the sub-targets that project
+exposes (e.g. `casino -> ["tui", "www"]`). The caller may invoke a
+project three ways:
 
-`prod` is opt-in: it is the sudo-umbrella install for `bed` and
-`zoid6` and is dropped from auto-expansion unless the caller (or a
-transitive explicit dep) named it. See SPECS.md §3.2.
+- **`deploy proj.tui`** — pin one or more explicit subs; only those
+  subs run. No transitive deps are pulled in (add `--with-deps` to
+  pull them).
+- **`deploy proj`** (bare, no `--with-deps`) — ambiguous if
+  `len(TARGETS[proj]) > 1`. The resolver lists the available subs
+  and exits `1`. Caller must name a sub (or pass `--with-deps`).
+- **`deploy --with-deps proj`** (bare, `--with-deps` set) — auto-
+  expands to every entry in `TARGETS[proj]` AND walks the full
+  transitive dep chain. This is the one-shot "build everything
+  for this project" shortcut.
+- **Single-entry `TARGETS[proj]`** (e.g. `getdate_next -> ["tui"]`)
+  has no ambiguity to begin with; `deploy getdate_next` (bare) runs
+  `getdate_next.tui` automatically.
+- **No `TARGETS[proj]`** (e.g. `mistermcfeely`, `asimov`,
+  `letteredolive`) — no subs to choose; the bare `make deploy`
+  target runs.
+
+`--with-deps` controls whether the transitive dep chain (`bbsengine6`,
+`bed`, etc.) is walked:
+
+- **Default (`--with-deps` not set)** — no deps pulled. Only the
+  caller-named projects run.
+- **`--with-deps` set** — full topo-sorted dep chain for every
+  requested sub. Combined with `--editable`, installs each package
+  editable into the active venv.
 
 ## Build & publish
 
@@ -114,6 +148,14 @@ deploys:
   bed.tui → `deploy-venv` resolution; bbsengine6.tui conditional dep.
 - `test_deploy_getdate_next_tui.py` — `PREPARE_BUILD` invariants
   (foreign-owned `build/` chmod EPERM; `chmod 1775` not `chmod g-s`).
+- `test_deploy_with_deps.py` — `--with-deps` flag and bare-base
+  ambiguity rules (multi-sub TARGETS lists subs and exits 1;
+  single-sub TARGETS auto-picks; bare under `--with-deps` auto-
+  expands subs and walks dep chains).
+- `test_deploy_aborts_on_step_failure.py` — `run_make_deploy` /
+  `run_verify` exception contract (`DeployFailed`), env handling
+  (`--editable` set/strip), subprocess hardening, abort propagation
+  in `main.main()`.
 
 Tests invoke `make` against real sibling-project Makefiles under
 `SOURCE_BASE` (`/home/opencode/data/work`). CI or a fresh checkout

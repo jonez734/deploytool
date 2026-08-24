@@ -200,22 +200,44 @@ def buildargs(args=None, **kwargs):
              "is exported to make so per-project Makefiles can swap wheel "
              "install for editable install",
     )
+    parser.add_argument(
+        "--with-deps",
+        action="store_true",
+        help="include transitive dependencies in the deploy chain. "
+             "Without this flag, only explicitly named projects are "
+             "deployed (no transitive deps are pulled in). "
+             "With this flag, bare-base invocation also auto-expands all "
+             "sub-targets (e.g. `deploy --with-deps casino` runs both "
+             "`casino.tui` and `casino.www` plus their full dep chains). "
+             "(default: %(default)s)",
+    )
     return parser
 
 
-def resolve(projects):
+def resolve(projects, with_deps=False):
     # Parse and validate all project names first.
     # project_info: base -> list of requested subs (one entry per sub-target).
     # Projects without TARGETS get a single [None] entry meaning "bare deploy".
-    # When the caller specifies no sub and the project has TARGETS, every
-    # entry in TARGETS is requested (so `deploy foo` runs every deploy-foo-*
-    # target, not just the first one).
+    #
+    # Bare-base rules:
+    #   - With TARGETS and no sub named, AND multiple subs in TARGETS:
+    #     AMBIGUOUS — list the subs and exit 1. Caller must name a sub
+    #     (e.g. `deploy casino.tui`).
+    #   - With TARGETS and no sub named, AND exactly one sub in TARGETS:
+    #     auto-pick that single sub (no ambiguity possible). E.g.
+    #     `deploy getdate_next` -> `getdate_next.tui`.
+    #   - Under `--with-deps` (`with_deps=True`), bare-base with TARGETS
+    #     auto-expands to all subs regardless of count (see §2.2 in
+    #     SPECS.md). This is the "build the whole thing" intent shortcut.
+    #   - Without TARGETS (e.g. `mistermcfeely`, `asimov`): no
+    #     ambiguity; runs the bare `make deploy` target.
     project_info = {}
     # Subs the caller (or a transitive explicit dep) named explicitly.
     # Used below to keep auto-expanded `prod` sub-targets out of the
     # default deploy — `prod` is the sudo umbrella install and should
     # only run when explicitly requested.
     explicit_subs = set()
+    ambiguous = []  # bare bases with TARGETS that did NOT get auto-expanded
     for project in projects:
         parts = project.split(".", 1)
         base = parts[0]
@@ -236,7 +258,13 @@ def resolve(projects):
         targets = get_targets(base)
         if targets:
             if sub is None:
-                subs = list(targets)
+                if with_deps or len(targets) == 1:
+                    subs = list(targets)
+                    for s in subs:
+                        explicit_subs.add((base, s))
+                else:
+                    ambiguous.append((base, targets))
+                    subs = []
             else:
                 if sub not in targets:
                     available = ", ".join(targets)
@@ -255,6 +283,16 @@ def resolve(projects):
         for s in subs:
             if s not in project_info[base]:
                 project_info[base].append(s)
+
+    if ambiguous:
+        for base, targets in ambiguous:
+            io.echo(
+                f"{{red}}{{bold}}{base}{{/all}} has multiple sub-targets "
+                f"({', '.join(targets)}); choose one or more, e.g. "
+                f"`deploy {base}.{targets[0]}`{{/all}}",
+                level="error",
+            )
+        sys.exit(1)
 
     # Topological sort
     visited = set()
@@ -279,13 +317,14 @@ def resolve(projects):
                 project_info[name].append(sub)
             requested_subs.setdefault(name, set()).add(sub)
             explicit_subs.add((name, sub))
-        for dep in DEPENDENCIES.get(name, []):
-            visit(dep)
-        for cond_sub, extra_deps in CONDITIONAL_DEPENDENCIES.get(name, {}).items():
-            if cond_sub in requested_subs.get(name, set()):
-                for dep in extra_deps:
-                    dep_name, dep_sub = _normalize_dep(dep)
-                    visit(dep_name, dep_sub, explicit=(dep_sub is not None))
+        if with_deps:
+            for dep in DEPENDENCIES.get(name, []):
+                visit(dep)
+            for cond_sub, extra_deps in CONDITIONAL_DEPENDENCIES.get(name, {}).items():
+                if cond_sub in requested_subs.get(name, set()):
+                    for dep in extra_deps:
+                        dep_name, dep_sub = _normalize_dep(dep)
+                        visit(dep_name, dep_sub, explicit=(dep_sub is not None))
         order.append((name, sub))
 
     seed = []

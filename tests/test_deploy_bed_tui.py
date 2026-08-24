@@ -40,7 +40,7 @@ def test_bed_tui_resolves_to_bed_with_tui_sub():
     bbsengine6) is applied at run time via `MAKE_TARGET_ALIASES`, not in
     the resolve output.
     """
-    order = deploytool.lib.resolve(["bed.tui"])
+    order = deploytool.lib.resolve(["bed.tui"], with_deps=True)
     assert order == [("bbsengine6", "tui"), ("bed", "tui")]
     assert deploytool.lib.MAKE_TARGET_ALIASES[("bed", "tui")] == "venv"
 
@@ -54,7 +54,7 @@ def test_bed_tui_pulls_bbsengine6_tui_not_bare_bbsengine6():
     deploy does full web+php+skin rsync that a tui-only consumer does
     not need and that may fail or hang in restricted environments.
     """
-    order = deploytool.lib.resolve(["bed.tui"])
+    order = deploytool.lib.resolve(["bed.tui"], with_deps=True)
 
     bbsengine6_entries = [entry for entry in order if entry[0] == "bbsengine6"]
     assert bbsengine6_entries, "bed.tui must depend on bbsengine6"
@@ -73,7 +73,7 @@ def test_bed_venv_keeps_bare_bbsengine6_dep():
     sub-target does not exist in bbsengine6's TARGETS. It keeps the
     unconditional bare `bbsengine6` dep from DEPENDENCIES.
     """
-    order = deploytool.lib.resolve(["bed.venv"])
+    order = deploytool.lib.resolve(["bed.venv"], with_deps=True)
     bbsengine6_entries = [entry for entry in order if entry[0] == "bbsengine6"]
     assert bbsengine6_entries == [("bbsengine6", None)], (
         f"bed.venv should pull bare bbsengine6, got: {bbsengine6_entries}"
@@ -248,21 +248,35 @@ def test_prepare_build_pins_build_dir_to_mode_1775():
     - setgid is intentionally NOT set, because setuptools' copystat
       mirrors build/'s mode onto dist-info, and a setgid'd dist-info
       EPERMs the bdist_wheel step in SELinux+NoNewPrivs containers.
+
+    The chmod is expressed as `chmod g-s,+t` (drop the setgid bit the
+    parent dir inherited onto the freshly-mkdir'd build/, then add the
+    sticky bit). The numeric form `chmod 1775` is functionally
+    equivalent but trips a kernel restriction on BTRFS/SELinux setups
+    where the parent directory's setgid bit blocks the owner from
+    clearing it via the numeric mode. The symbolic form works because
+    the kernel only restricts numeric mode changes that would remove
+    the inherited setgid bit; symbol-mode `g-s` is allowed.
     """
     makefile = BED_DIR / "Makefile"
     text = makefile.read_text()
 
     prepare_block = text.split("PREPARE_BUILD = ", 1)[1].split("\n\n", 1)[0]
 
-    assert "chmod 1775" in prepare_block, (
-        "PREPARE_BUILD must pin build/ to mode 1775 (sticky + rwxrwxr-x). "
+    # Drop the inherited setgid AND add the sticky bit (resting mode 1775):
+    assert "g-s" in prepare_block and "+t" in prepare_block, (
+        "PREPARE_BUILD must drop the inherited setgid and add the "
+        "sticky bit so build/ rests at mode 1775 (sticky + rwxrwxr-x). "
         "Got:\n" + prepare_block
     )
-    # Also confirm we did NOT regress to the old setgid-leaking mode:
-    assert "chmod g-s" not in prepare_block, (
-        "PREPARE_BUILD should not use `chmod g-s` (the old behaviour left "
-        "build/ mode dependent on umask, which can drop the sticky bit). "
-        "Use `chmod 1775` to pin the mode explicitly. Got:\n" + prepare_block
+    # Numeric form `chmod 1775` is forbidden because it fails on BTRFS+
+    # SELinux setups where the parent dir's setgid bit prevents the
+    # owner from clearing it via the numeric mode:
+    assert "chmod 1775" not in prepare_block, (
+        "PREPARE_BUILD must not use numeric `chmod 1775`: it fails "
+        "on BTRFS+SELinux setups where the parent dir's setgid bit "
+        "blocks the owner from clearing it. Use `chmod g-s,+t` instead. "
+        "Got:\n" + prepare_block
     )
 
 

@@ -16,7 +16,7 @@ def access(args, op, **kwargs) -> bool:
 
 
 def main(args, **kwargs):
-    projects = lib.resolve(args.projects)
+    projects = lib.resolve(args.projects, with_deps=getattr(args, "with_deps", False))
 
     # Group subs by base so callers see what's being built per project
     # (e.g. "bbsengine6 (tui, www)" rather than two flat entries).
