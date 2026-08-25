@@ -75,14 +75,55 @@ def test_run_make_deploy_returns_zero_on_success(monkeypatch):
     assert deploytool.lib.run_make_deploy(args, "bbsengine6", "www") == 0
 
 
-def test_run_make_deploy_dry_run_does_not_invoke_subprocess(monkeypatch):
-    """Dry-run prints the command and returns 0 without invoking subprocess."""
-    def boom(*a, **kw):
-        raise AssertionError("subprocess.run must not be called in dry-run")
+def test_run_make_deploy_dry_run_invokes_make_with_dry_run_flag(monkeypatch):
+    """Dry-run invokes subprocess with `--dry-run` appended to cmd and DEPLOY_DRY_RUN=1 in env."""
+    captured = {}
 
-    monkeypatch.setattr(deploytool.lib.subprocess, "run", boom)
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env", {})
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
     args = _make_args(["bbsengine6.www"], dry_run=True)
     assert deploytool.lib.run_make_deploy(args, "bbsengine6", "www") == 0
+
+    assert captured["cmd"][-1] == "--dry-run"
+    assert captured["cmd"][:3] == ["make", "-C", f"{deploytool.lib.SOURCE_BASE}/bbsengine6"]
+    assert captured["cmd"][3] == "deploy-www"
+    assert captured["env"].get("DEPLOY_DRY_RUN") == "1"
+
+
+def test_run_make_deploy_dry_run_strips_env_var_when_not_set(monkeypatch):
+    """When --dry-run is NOT passed, DEPLOY_DRY_RUN is stripped from env."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs["env"]
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    monkeypatch.delenv("DEPLOY_DRY_RUN", raising=False)
+    monkeypatch.setenv("DEPLOY_DRY_RUN", "1")
+    monkeypatch.setenv("PATH", "/usr/bin")  # always present
+
+    args = _make_args(["bbsengine6.www"], dry_run=False)
+    deploytool.lib.run_make_deploy(args, "bbsengine6", "www")
+    assert "DEPLOY_DRY_RUN" not in captured["env"]
+    assert captured["env"]["PATH"] == "/usr/bin"
+
+
+def test_run_make_deploy_dry_run_aborts_on_nonzero_rc(monkeypatch):
+    """A non-zero `make --dry-run` rc still raises DeployFailed."""
+    monkeypatch.setattr(
+        deploytool.lib.subprocess, "run",
+        lambda *a, **kw: _completed(returncode=2, stderr="dry-run broken"),
+    )
+    args = _make_args(["bbsengine6.www"], dry_run=True)
+    with pytest.raises(deploytool.lib.DeployFailed) as excinfo:
+        deploytool.lib.run_make_deploy(args, "bbsengine6", "www")
+    assert excinfo.value.rc == 2
+    assert excinfo.value.label == "bbsengine6.www"
 
 
 def test_run_make_deploy_raises_on_timeout(monkeypatch):
