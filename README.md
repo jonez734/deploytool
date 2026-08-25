@@ -38,7 +38,7 @@ deploy [options] project[.sub] [project[.sub] ...]
 | Flag | Effect |
 |---|---|
 | `--host HOST` | Target host (default: `merlin`) |
-| `--dry-run` | Print commands instead of running |
+| `--dry-run` | Pass `--dry-run` through to each `make` invocation; per-project Makefile dry-run output (e.g. inner `pip install ...` recipe lines) is captured and printed. Exports `DEPLOY_DRY_RUN=1` in the subprocess env. The verify step is skipped under `--dry-run`. |
 | `--timeout SECONDS` | Per-step subprocess timeout (default: `600`); expired timeouts abort the deploy |
 | `--verify` | Run post-deploy verification step |
 | `--debug` | Debug mode |
@@ -67,7 +67,12 @@ deploy --with-deps casino
 deploy --with-deps casino.tui
 # -> bbsengine6.tui, bed.tui, casino.tui
 
-# dry-run: see the chain without executing
+# dry-run: see the chain without executing. Each step runs `make -n`
+# against the real per-project Makefile, so the output includes the
+# inner recipe (e.g. `pip install /srv/repo/casino/casino-*.whl`,
+# `cd py && pip install -e .` under --editable, recursive `make -C
+# zoid6/src deploy-tui`, etc.). The verify step is skipped since
+# `php` has no dry-run flag.
 deploy --dry-run casino.tui
 
 # deploy + verify (runs bbsengine6's blurb render test after)
