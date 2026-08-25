@@ -9,17 +9,32 @@ releases bump the patch). Dates are the day the commit landed on
 
 ### Added
 - `--with-deps` CLI flag (default `false`). When set, the resolver
-  walks transitive dependencies for every requested project AND
-  bare-base invocation (`deploy foo` with no `.sub`) auto-expands
-  to every entry in `TARGETS[foo]`. When unset (the default), only
-  the projects the caller explicitly named run — no transitive
-  dep walking. Combined with `--editable`, installs each package
-  editable from the source tree. See README and `SPECS.md §2.2`.
+  walks transitive dependencies for every requested project. When
+  unset (the default), only the projects the caller explicitly
+  named run — no transitive dep walking. Combined with `--editable`,
+  installs each package editable from the source tree. See README
+  and `SPECS.md §2.2`.
 - `test_deploy_with_deps.py` — regression coverage for the
   `--with-deps` flag and the bare-base ambiguity rules. Includes
-  bare `casino`/`bed`/`multi-project` listing-then-exit,
-  single-sub auto-pick, full-chain expansion under `--with-deps`,
-  and CLI parser round-trips.
+  bare `casino`/`bed`/`multi-project` listing-then-exit (under
+  both `--with-deps` and the default), single-sub auto-pick,
+  explicit-sub chain walking under `--with-deps`, and CLI parser
+  round-trips.
+
+### Changed
+- `--with-deps` no longer auto-expands bare-base invocation to all
+  subs. Previously `deploy --with-deps casino` ran both
+  `casino.tui` and `casino.www` (and their full dep chains); now
+  bare-base is ambiguous whenever `TARGETS[foo]` has more than one
+  entry, regardless of `--with-deps`. The resolver lists the subs
+  and exits `1`; callers must name them explicitly
+  (`deploy --with-deps casino.tui casino.www`). `--with-deps`
+  now controls a single behavior: transitive-dep walking. The
+  previous "build the whole thing" shortcut for bare-base under
+  `--with-deps` is gone; the flag is documented as such in
+  `SPECS.md §2.2` and the `--with-deps` argparse help text. The
+  `prod` opt-in (§3.2) is unchanged: `prod` survives only when
+  the caller (or a transitive explicit dep) named it.
 
 ### Changed
 - `--dry-run` now passes `--dry-run` through to each `make` invocation

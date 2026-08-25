@@ -2,24 +2,24 @@
 
 Bare-base rules (see `lib.resolve` docstring and SPECS.md §4):
 
-- A bare base with `TARGETS` containing multiple subs is ambiguous.
-  `lib.resolve()` calls `sys.exit(1)` with the available subs listed.
-  Caller must name at least one sub.
+- A bare base with `TARGETS` containing multiple subs is ambiguous —
+  regardless of `--with-deps`. `lib.resolve()` calls `sys.exit(1)`
+  with the available subs listed. Caller must name at least one sub.
 - A bare base with `TARGETS` containing exactly one sub auto-picks that
   sub (no choice to make).
 - A bare base with no `TARGETS` (e.g. `getdate_next`'s alias
   `mistermcfeely`) has nothing to choose from; the bare `make deploy`
   target runs.
-- Under `--with-deps` (`with_deps=True`), bare-base with `TARGETS`
-  auto-expands to all subs AND walks the full transitive dep chain.
-  This is the "build the whole thing" intent shortcut.
 
-The `--with-deps` flag controls dep walking independently:
+The `--with-deps` flag controls dep walking independently and does
+NOT change bare-base behavior:
 
 - `with_deps=False` (default): no transitive deps are pulled in.
   Only the projects the caller named run.
 - `with_deps=True`: the topo-sorted dep chain runs for each requested
-  project. `--with-deps` is orthogonal to `--editable`.
+  project. `--with-deps` is orthogonal to `--editable`. Bare-base
+  invocation under `--with-deps` is still ambiguous when
+  `len(TARGETS[foo]) > 1`.
 """
 
 import pytest
@@ -64,16 +64,31 @@ def test_bare_bed_with_three_subs_lists_all_three(monkeypatch):
     assert "prod" in out
 
 
-def test_bare_casino_with_deps_auto_expands_both_subs():
-    """Per Q2-B: bare-base under --with-deps auto-expands to all subs.
+def test_bare_casino_with_deps_is_ambiguous(monkeypatch):
+    """`deploy --with-deps casino` (bare) is ambiguous: list subs + exit 1.
 
-    `deploy --with-deps casino` (bare) IS the "build the whole thing"
-    shortcut. It runs both `casino.tui` and `casino.www` (and walks their
-    full dep chains). Without --with-deps, the bare form is ambiguous.
+    `--with-deps` controls dep walking, not sub-target expansion.
+    Bare-base invocation under `--with-deps` is still ambiguous when
+    `TARGETS[casino]` has more than one entry. Caller must name the
+    subs explicitly (`deploy --with-deps casino.tui casino.www`).
     """
-    order = deploytool.lib.resolve(["casino"], with_deps=True)
-    casino_subs = [s for _, s in order if _ == "casino"]
-    assert casino_subs == ["tui", "www"]
+    msgs = []
+    monkeypatch.setattr(
+        deploytool.lib.io, "echo",
+        lambda text, *a, **kw: msgs.append(text),
+    )
+
+    def fake_exit(rc=0):
+        raise SystemExit(rc)
+
+    monkeypatch.setattr(deploytool.lib.sys, "exit", fake_exit)
+    with pytest.raises(SystemExit) as excinfo:
+        deploytool.lib.resolve(["casino"], with_deps=True)
+    assert excinfo.value.code == 1
+    out = "\n".join(msgs)
+    assert "casino" in out
+    assert "tui" in out
+    assert "www" in out
 
 
 def test_multi_project_no_subs_lists_each(monkeypatch):
@@ -153,9 +168,16 @@ def test_explicit_sub_for_no_deps_project():
 # ---------------------------------------------------------------------------
 
 
-def test_with_deps_bare_casino_auto_expands_both_subs_plus_deps():
-    """`deploy --with-deps casino` runs casino.tui + casino.www + full chain."""
-    order = deploytool.lib.resolve(["casino"], with_deps=True)
+def test_with_deps_explicit_casino_subs_walks_full_chain():
+    """`deploy --with-deps casino.tui casino.www` walks the chain for both.
+
+    The previous "auto-expand all subs under --with-deps" shortcut is
+    gone; callers name the subs explicitly to get the full chain for
+    each. Both subs' chains merge into one topo-sorted order.
+    """
+    order = deploytool.lib.resolve(
+        ["casino.tui", "casino.www"], with_deps=True
+    )
     assert order == [
         ("bbsengine6", "www"),
         ("bbsengine6", "tui"),
@@ -165,21 +187,30 @@ def test_with_deps_bare_casino_auto_expands_both_subs_plus_deps():
     ]
 
 
-def test_with_deps_bare_bed_auto_expands_all_three_subs():
-    """`deploy --with-deps bed` auto-expands tui+venv+prod (prod is opt-in here).
+def test_with_deps_bare_bed_is_ambiguous(monkeypatch):
+    """`deploy --with-deps bed` (bare) is ambiguous regardless of --with-deps.
 
-    bed.tui and bed.venv both alias to the same make target (`deploy-venv`),
-    so the dedup pass collapses them to one entry. The assertion only
-    checks the surviving-aliased sub is present, plus prod (which
-    survives because the prod opt-in drop is keyed on explicit_subs
-    and --with-deps populates explicit_subs for every auto-expanded sub).
+    bed has three subs (`tui`, `venv`, `prod`); bare invocation under
+    any flag set is ambiguous. The resolver lists all three and exits 1.
     """
-    order = deploytool.lib.resolve(["bed"], with_deps=True)
-    bed_entries = [s for _, s in order if _ == "bed"]
-    assert "prod" in bed_entries, f"bed.prod missing from {bed_entries}"
-    assert any(s in ("tui", "venv") for s in bed_entries), (
-        f"bed.tui or bed.venv missing from {bed_entries}"
+    msgs = []
+    monkeypatch.setattr(
+        deploytool.lib.io, "echo",
+        lambda text, *a, **kw: msgs.append(text),
     )
+
+    def fake_exit(rc=0):
+        raise SystemExit(rc)
+
+    monkeypatch.setattr(deploytool.lib.sys, "exit", fake_exit)
+    with pytest.raises(SystemExit) as excinfo:
+        deploytool.lib.resolve(["bed"], with_deps=True)
+    assert excinfo.value.code == 1
+    out = "\n".join(msgs)
+    assert "bed" in out
+    assert "tui" in out
+    assert "venv" in out
+    assert "prod" in out
 
 
 def test_with_deps_explicit_sub_walks_chain():

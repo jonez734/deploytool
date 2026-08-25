@@ -28,15 +28,15 @@ deploy [options] project[.sub] [project[.sub] ...]
 | `--verify` | Run post-deploy verification step after the deploy chain |
 | `--debug` | Debug mode |
 | `--editable` | Install per-project Python packages in editable mode (`pip install -e`). Sets `DEPLOY_EDITABLE=1` in the `make` invocation's environment so each per-project Makefile can swap wheel install for editable install. See §2.1. |
-| `--with-deps` | Include transitive dependencies in the chain. Default `false` — only caller-named projects run (no transitive dep walking). Bare-base invocation (`deploy foo` with no `.sub`) under `--with-deps` also auto-expands to every entry in `TARGETS[foo]`. Bare-base invocation without `--with-deps` is ambiguous when `len(TARGETS[foo]) > 1`: the resolver lists the subs and exits `1`. See §2.2. |
+| `--with-deps` | Include transitive dependencies in the chain. Default `false` — only caller-named projects run (no transitive dep walking). `--with-deps` does NOT auto-expand bare-base invocation; bare-base is ambiguous whenever `len(TARGETS[foo]) > 1` regardless of this flag. See §2.2. |
 
 Bare-base invocation rules (see §4 Sub-targets for detail):
 
 - `deploy foo.tui` — pin explicit subs; no transitive deps unless
   `--with-deps` is also set.
 - `deploy foo` (bare) — ambiguous when `TARGETS[foo]` has more than
-  one entry. Exits `1` listing the subs. Pass `--with-deps` to
-  auto-expand instead (see §2.2).
+  one entry. Exits `1` listing the subs, regardless of `--with-deps`.
+  Caller must name a sub (e.g. `deploy foo.tui`).
 - `deploy foo` (bare, `TARGETS[foo]` is empty) — runs the bare
   `make deploy` target; no ambiguity possible.
 
@@ -103,40 +103,37 @@ the step is logged and skipped without invoking `php`.
 
 ### 2.2 `--with-deps` semantics
 
-`--with-deps` controls two orthogonal behaviors at once: whether
-transitive dependencies are walked, and whether bare-base invocation
-auto-expands to all subs.
+`--with-deps` controls a single behavior: whether transitive
+dependencies are walked for each explicitly-named project. It does
+NOT control sub-target expansion.
 
 **Without `--with-deps` (default):**
 
 - The dep walker (`lib.resolve` `visit()` at `lib.py:310-348`) skips
   both `DEPENDENCIES` and `CONDITIONAL_DEPENDENCIES`. Only the
   caller-named projects run.
-- Bare-base invocation (`deploy foo` with no `.sub`) is **ambiguous**
-  when `TARGETS[foo]` has more than one entry: the resolver prints
-  the available subs and calls `sys.exit(1)`. The caller must name a
-  sub (`deploy foo.tui`) or pass `--with-deps`.
-- Projects with a single entry in `TARGETS` (e.g. `getdate_next ->
-  ["tui"]`) auto-pick that one sub on bare invocation — no
-  ambiguity possible.
-- Projects with no `TARGETS` entry (e.g. `mistermcfeely`,
-  `asimov`, `letteredolive`) run the bare `make deploy` target
-  unconditionally on bare invocation.
 
 **With `--with-deps`:**
 
 - The dep walker pulls in every transitive dependency declared in
   `DEPENDENCIES` and the conditional-deps matching each requested
   sub.
-- Bare-base invocation auto-expands to every entry in `TARGETS[foo]`
-  — the "build the whole thing" shortcut. `deploy --with-deps casino`
-  runs both `casino.tui` and `casino.www` and walks their full dep
-  chains (`bbsengine6.{tui, www}`, `bed.tui`, etc.).
-- The auto-expansion populates `explicit_subs` for every subs in
-  `TARGETS[foo]`. This interacts with the `prod` opt-in drop
-  (§3.2): auto-expanded `prod` subs survive the drop because the
-  drop gate (`lib.py:362`) only skips entries NOT in
-  `explicit_subs`.
+
+**Bare-base invocation (independent of `--with-deps`):**
+
+- Bare-base (`deploy foo` with no `.sub`) is **ambiguous** whenever
+  `TARGETS[foo]` has more than one entry: the resolver prints the
+  available subs and calls `sys.exit(1)`. The caller must name a
+  sub (`deploy foo.tui`). `--with-deps` does not change this; the
+  flag does not auto-expand bare-base. To deploy every sub of a
+  base, name them explicitly:
+  `deploy --with-deps casino.tui casino.www`.
+- Projects with a single entry in `TARGETS` (e.g. `getdate_next ->
+  ["tui"]`) auto-pick that one sub on bare invocation — no
+  ambiguity possible.
+- Projects with no `TARGETS` entry (e.g. `mistermcfeely`,
+  `asimov`, `letteredolive`) run the bare `make deploy` target
+  unconditionally on bare invocation.
 
 `--with-deps` is orthogonal to `--editable`. `deploy --with-deps
 --editable foo.tui` walks the chain and installs every package
@@ -170,10 +167,11 @@ in the final order.
 ### 3.2 `prod` opt-in
 
 `prod` is a sudo-umbrella install for `bed` and `zoid6` and must not
-run by default. `lib.py:362` drops auto-expanded `prod` entries
-from the final order; only `prod` subs the caller (or a transitive
-explicit dep, or `--with-deps` auto-expansion at `lib.py:266-271`)
-named explicitly survive.
+run by default. The drop gate (`lib.py:362`) keeps `prod` out of the
+final order unless the caller named it explicitly
+(`deploy bed.prod`) or a transitive explicit dep named it. Bare-base
+invocation never pulls in `prod` because it never auto-expands
+(§2.2) — callers must name `prod` to opt in.
 
 ## 4. Sub-targets
 
@@ -192,17 +190,14 @@ Bare-base invocation semantics (see `lib.resolve` lines
 
 - `deploy proj.tui` (or any explicit sub) — pins that sub. No
   transitive deps unless `--with-deps` is set (see §2.2).
-- `deploy proj` (bare, no `--with-deps`) — ambiguous when
-  `len(TARGETS[proj]) > 1`. The resolver prints the available
-  subs and exits `1`. Caller must name a sub or pass `--with-deps`.
+- `deploy proj` (bare) — ambiguous when `len(TARGETS[proj]) > 1`.
+  The resolver prints the available subs and exits `1`, regardless
+  of `--with-deps`. Caller must name a sub explicitly.
 - `deploy proj` (bare, single-sub `TARGETS`) — auto-picks that
   one sub. No ambiguity to begin with (e.g. `deploy getdate_next`
   → `getdate_next.tui`).
 - `deploy proj` (bare, no `TARGETS[proj]` entry) — runs the bare
   `make deploy` target; nothing to choose.
-- `deploy --with-deps proj` (bare, `--with-deps` set) — auto-
-  expands to every entry in `TARGETS[proj]` AND walks the full
-  transitive dep chain.
 
 Sub names are user-facing. The actual `make` target name may differ —
 see §5.

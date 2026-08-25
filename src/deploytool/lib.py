@@ -206,10 +206,11 @@ def buildargs(args=None, **kwargs):
         help="include transitive dependencies in the deploy chain. "
              "Without this flag, only explicitly named projects are "
              "deployed (no transitive deps are pulled in). "
-             "With this flag, bare-base invocation also auto-expands all "
-             "sub-targets (e.g. `deploy --with-deps casino` runs both "
-             "`casino.tui` and `casino.www` plus their full dep chains). "
-             "(default: %(default)s)",
+             "Bare-base invocation (`deploy foo` with no `.sub`) is "
+             "ambiguous whenever `TARGETS[foo]` has more than one entry, "
+             "regardless of this flag; the resolver lists the subs and "
+             "exits 1. Name a sub explicitly (e.g. `deploy casino.tui`) "
+             "to avoid the ambiguity. (default: %(default)s)",
     )
     return parser
 
@@ -222,13 +223,11 @@ def resolve(projects, with_deps=False):
     # Bare-base rules:
     #   - With TARGETS and no sub named, AND multiple subs in TARGETS:
     #     AMBIGUOUS — list the subs and exit 1. Caller must name a sub
-    #     (e.g. `deploy casino.tui`).
+    #     (e.g. `deploy casino.tui`). `--with-deps` does NOT change this;
+    #     the flag only controls dep walking, not sub expansion.
     #   - With TARGETS and no sub named, AND exactly one sub in TARGETS:
     #     auto-pick that single sub (no ambiguity possible). E.g.
     #     `deploy getdate_next` -> `getdate_next.tui`.
-    #   - Under `--with-deps` (`with_deps=True`), bare-base with TARGETS
-    #     auto-expands to all subs regardless of count (see §2.2 in
-    #     SPECS.md). This is the "build the whole thing" intent shortcut.
     #   - Without TARGETS (e.g. `mistermcfeely`, `asimov`): no
     #     ambiguity; runs the bare `make deploy` target.
     project_info = {}
@@ -237,7 +236,7 @@ def resolve(projects, with_deps=False):
     # default deploy — `prod` is the sudo umbrella install and should
     # only run when explicitly requested.
     explicit_subs = set()
-    ambiguous = []  # bare bases with TARGETS that did NOT get auto-expanded
+    ambiguous = []  # bare bases with TARGETS that did NOT get auto-picked
     for project in projects:
         parts = project.split(".", 1)
         base = parts[0]
@@ -258,10 +257,9 @@ def resolve(projects, with_deps=False):
         targets = get_targets(base)
         if targets:
             if sub is None:
-                if with_deps or len(targets) == 1:
+                if len(targets) == 1:
                     subs = list(targets)
-                    for s in subs:
-                        explicit_subs.add((base, s))
+                    explicit_subs.add((base, subs[0]))
                 else:
                     ambiguous.append((base, targets))
                     subs = []
