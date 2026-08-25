@@ -23,7 +23,7 @@ deploy [options] project[.sub] [project[.sub] ...]
 | Flag | Effect |
 |---|---|
 | `--host HOST` | Target host for ssh-based deploys (default: `merlin`) |
-| `--dry-run` | Print commands instead of executing |
+| `--dry-run` | Pass `--dry-run` through to each `make` invocation (appended to the cmd vector after the target) and export `DEPLOY_DRY_RUN=1` in the subprocess env. The per-project Makefile's `make -n` output is captured and printed. `make -n` failures still raise `DeployFailed(rc, label)`. The verify step (`run_verify`) does NOT invoke `php` under `--dry-run` since `php` has no dry-run flag. |
 | `--timeout SECONDS` | Per-step subprocess timeout in seconds (default: `600`); expired timeouts abort the deploy with `DeployFailed(rc=-1)` |
 | `--verify` | Run post-deploy verification step after the deploy chain |
 | `--debug` | Debug mode |
@@ -76,6 +76,30 @@ legacy names: bed's Makefile accepts all three (canonical
 `EDITABLE=1` or `DEV=1` in the operator's shell could still
 trigger bed's editable path without `--editable`. The three-way
 strip closes that gap.
+
+### 2.1.1 `--dry-run` env-var contract
+
+`--dry-run` follows the same single-source-of-truth pattern as
+`--editable`. `lib.run_make_deploy` (`lib.py:428-469`) either sets
+`DEPLOY_DRY_RUN=1` in the subprocess env (when `--dry-run` is
+passed) or strips `DEPLOY_DRY_RUN` from the copied env (when it
+isn't). Per-project Makefiles that want to opt into extra dry-run
+behavior (e.g. skipping a side-effect that `make -n` alone won't
+suppress, such as touching a stamp file in a `$(shell ...)` call)
+can read `DEPLOY_DRY_RUN` directly. There are no legacy aliases
+for this var.
+
+Unlike `--editable`, `--dry-run` ALSO appends `--dry-run` to the
+cmd vector so `make -n` is actually invoked — deploytool is not
+short-circuiting the subprocess anymore. The operator sees the
+per-project Makefile's recipe lines (e.g. the `pip install
+/srv/repo/<project>/<project>-*.whl` line under default mode, or
+the `cd py && pip install -e .` line under `--editable`).
+
+The verify step (`run_verify`) does NOT honor `--dry-run` for the
+underlying subprocess. `php test_blurb_render.php` has no dry-run
+flag, so `run_verify` keeps its short-circuit: under `--dry-run`
+the step is logged and skipped without invoking `php`.
 
 ### 2.2 `--with-deps` semantics
 
