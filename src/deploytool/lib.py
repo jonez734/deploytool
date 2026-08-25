@@ -439,10 +439,10 @@ def run_make_deploy(args, project, sub=None):
     label = f"{project}.{sub}" if sub else project
 
     # Always copy the operator's env so PATH and friends are preserved,
-    # then control the editable-mode vars explicitly so deploytool is
-    # the sole source of truth (an operator who happens to have
-    # DEPLOY_EDITABLE=1 in their shell does not accidentally trigger
-    # editable mode without passing --editable).
+    # then control the editable-mode + dry-run vars explicitly so
+    # deploytool is the sole source of truth (an operator who happens to
+    # have DEPLOY_EDITABLE=1 or DEPLOY_DRY_RUN=1 in their shell does not
+    # accidentally trigger that mode without passing the matching flag).
     env = os.environ.copy()
     if getattr(args, "editable", False):
         env["DEPLOY_EDITABLE"] = "1"
@@ -456,12 +456,17 @@ def run_make_deploy(args, project, sub=None):
         for var in ("DEPLOY_EDITABLE", "EDITABLE", "DEV"):
             env.pop(var, None)
 
-    if getattr(args, "dry_run", False):
-        prefix = "DEPLOY_EDITABLE=1 " if env.get("DEPLOY_EDITABLE") == "1" else ""
-        io.echo(f"{{yellow}}dry-run:{{/all}} {prefix}{' '.join(cmd)}")
-        return 0
+    dry_run = getattr(args, "dry_run", False)
+    if dry_run:
+        cmd.append("--dry-run")
+        env["DEPLOY_DRY_RUN"] = "1"
+    else:
+        env.pop("DEPLOY_DRY_RUN", None)
 
-    io.echo(f"{{cyan}}running:{{/all}} {' '.join(cmd)}")
+    if dry_run:
+        io.echo(f"{{yellow}}dry-run:{{/all}} {' '.join(cmd)}")
+    else:
+        io.echo(f"{{cyan}}running:{{/all}} {' '.join(cmd)}")
     timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
     result = _run_subprocess(cmd, timeout=timeout, env=env, label=label)
     if result.stdout:
