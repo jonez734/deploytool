@@ -22,6 +22,24 @@ releases bump the patch). Dates are the day the commit landed on
   and CLI parser round-trips.
 
 ### Changed
+- `--dry-run` now passes `--dry-run` through to each `make` invocation
+  (appended after the target) and exports `DEPLOY_DRY_RUN=1` in the
+  subprocess env, instead of short-circuiting in deploytool. Per-project
+  Makefile dry-run output (e.g. the inner `pip install ...` recipe
+  lines, recursive `make -C zoid6/src deploy-tui` invocations, etc.)
+  is captured and printed via the existing stdout-echo path in
+  `lib.run_make_deploy`. `make -n` failures still abort the deploy
+  via `DeployFailed(rc, label)`. The verify step (`--verify` ->
+  `php test_blurb_render.php`) keeps its short-circuit under
+  `--dry-run` since `php` has no dry-run flag. `DEPLOY_DRY_RUN` is
+  stripped from the subprocess env when `--dry-run` is not passed
+  (same single-source-of-truth pattern as `DEPLOY_EDITABLE`). The
+  test `test_run_make_deploy_dry_run_does_not_invoke_subprocess`
+  is rewritten to assert the new contract; new tests
+  `test_run_make_deploy_dry_run_strips_env_var_when_not_set` and
+  `test_run_make_deploy_dry_run_aborts_on_nonzero_rc` cover env-var
+  propagation/strip and dry-run failure propagation respectively.
+  See `SPECS.md §2` and `§2.1.1`.
 - Bare-project invocation semantics (`deploy foo` with no `.sub`)
   are now **ambiguous** when `TARGETS[foo]` has more than one
   entry: the resolver lists the available sub-targets and exits
