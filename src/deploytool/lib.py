@@ -126,7 +126,7 @@ TARGETS = {
     "article2": ["www", "tui"],
     "backuptools": ["www", "tui"],
     "deploytool": ["tui"],
-    "zoidoffice": ["tui"],
+    "zoidoffice": ["tui", "www"],
     "bed": ["tui", "venv", "prod"],
     "bbsengine6": ["tui", "www"],
     "getdate_next": ["tui"],
