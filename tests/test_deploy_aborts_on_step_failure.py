@@ -404,7 +404,7 @@ def test_main_aborts_on_verify_failed(monkeypatch):
         raise deploytool.lib.DeployFailed(3, "verify.bbsengine6")
 
     monkeypatch.setattr(deploytool.lib, "run_verify", fake_run_verify)
-    args = _make_args(["bbsengine6.www"], verify=True)
+    args = _make_args(["bbsengine6.wwworg"], verify=True)
     assert deploytool.main.main(args) == 1
 
 
@@ -415,7 +415,7 @@ def test_main_completes_when_verify_passes(monkeypatch):
         lambda args, project, sub: 0,
     )
     monkeypatch.setattr(deploytool.lib, "run_verify", lambda args, projects: 0)
-    args = _make_args(["bbsengine6.www"], verify=True)
+    args = _make_args(["bbsengine6.wwworg"], verify=True)
     assert deploytool.main.main(args) == 0
 
 
@@ -426,7 +426,7 @@ def test_main_skips_verify_when_not_requested(monkeypatch):
 
     monkeypatch.setattr(deploytool.lib, "run_make_deploy", lambda a, p, s: 0)
     monkeypatch.setattr(deploytool.lib, "run_verify", boom)
-    args = _make_args(["bbsengine6.www"], verify=False)
+    args = _make_args(["bbsengine6.wwworg"], verify=False)
     assert deploytool.main.main(args) == 0
 
 
