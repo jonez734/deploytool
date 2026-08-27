@@ -87,6 +87,10 @@ deploy getdate_next
 
 # bare project (no TARGETS) runs unconditionally
 deploy mistermcfeely
+
+# bbsengine6 website deploys (bbsengine.org / bbsengine.com)
+deploy bbsengine6.wwworg
+deploy bbsengine6.wwwcom
 ```
 
 ### Sub-target semantics
@@ -153,6 +157,11 @@ deploys:
   bed.tui → `deploy-venv` resolution; bbsengine6.tui conditional dep.
 - `test_deploy_getdate_next_tui.py` — `PREPARE_BUILD` invariants
   (foreign-owned `build/` chmod EPERM; `chmod 1775` not `chmod g-s`).
+- `test_deploy_bbsengine6_www.py` — three-sub TARGETS shape for
+  `bbsengine6` (`tui`, `wwworg`, `wwwcom`); legacy `www` removed;
+  bare-base ambiguity; explicit-sub resolution; make-rule wiring
+  for `deploy-wwworg` / `deploy-wwwcom` and their `wwworg:` /
+  `wwwcom:` delegates in `bbsengine6/Makefile`.
 - `test_deploy_with_deps.py` — `--with-deps` flag and bare-base
   ambiguity rules (multi-sub TARGETS lists subs and exits 1;
   single-sub TARGETS auto-picks; bare under `--with-deps` auto-

@@ -8,6 +8,20 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Added
+- `bbsengine6.wwworg` and `bbsengine6.wwwcom` sub-targets. The
+  `bbsengine6/Makefile` defines matching `deploy-wwworg` /
+  `deploy-wwwcom` wrapper rules that delegate to the existing
+  `wwworg:` / `wwwcom:` targets (which in turn drive
+  `bbsengine6/www/{org,com}/Makefile`). Bare `deploy bbsengine6`
+  is now ambiguous across three subs (`tui`, `wwworg`, `wwwcom`).
+- `test_deploy_bbsengine6_www.py` — regression coverage mirroring
+  `test_deploy_zoidoffice.py`: TARGETS shape (three subs, legacy
+  `www` removed), bare-invocation ambiguity (default and
+  `--with-deps`), explicit-sub resolution for each of the three
+  subs, legacy `www` rejection, make-target wiring
+  (`deploy-wwworg` / `deploy-wwwcom`), and Makefile-level
+  presence of the wrapper rules plus their `wwworg:` / `wwwcom:`
+  delegate targets.
 - `--with-deps` CLI flag (default `false`). When set, the resolver
   walks transitive dependencies for every requested project. When
   unset (the default), only the projects the caller explicitly
@@ -20,6 +34,17 @@ releases bump the patch). Dates are the day the commit landed on
   both `--with-deps` and the default), single-sub auto-pick,
   explicit-sub chain walking under `--with-deps`, and CLI parser
   round-trips.
+
+### Changed
+- `TARGETS['bbsengine6']` changed from `['tui', 'www']` to
+  `['tui', 'wwworg', 'wwwcom']`. The legacy `www` sub (which
+  deployed the engine library via `php-deploy` + smarty rsync)
+  is removed; callers must use `wwworg` / `wwwcom` for the
+  website deploys. The `bbsengine6/Makefile` `deploy-www` rule
+  is removed and the corresponding `.PHONY` entry updated to
+  list `deploy-wwworg` / `deploy-wwwcom` instead. The legacy
+  `wwwcom:` rule that was commented out (`#wwwcom:`) is now
+  uncommented and active alongside `wwworg:`.
 
 ### Changed
 - `--with-deps` no longer auto-expands bare-base invocation to all
