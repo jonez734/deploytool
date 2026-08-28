@@ -137,9 +137,10 @@ NOT control sub-target expansion.
 
 `--with-deps` is orthogonal to `--editable`. `deploy --with-deps
 --editable foo.tui` walks the chain and installs every package
-editable. `--with-deps` does NOT plumb a `DEPLOY_WITH_DEPS=1` env
-var into `make` invocations — the flag is purely a deploytool-side
-resolver concern; per-project Makefiles don't need to know.
+editable. `--with-deps` IS plumbed to per-project Makefiles as
+`DEPLOY_WITH_DEPS=1` so Makefiles that want to opt into less-strict
+precondition behavior under an explicit "rebuild everything"
+invocation can read it. See §2.2.1 for the env-var contract.
 
 ## 3. Dependency graph
 
@@ -156,6 +157,33 @@ Encoded in `lib.py:36-54` (`DEPENDENCIES`) and
    walked topologically. The walker passes through both
    `DEPENDENCIES` and `CONDITIONAL_DEPENDENCIES` for each visited
    node.
+
+### 2.2.1 `DEPLOY_WITH_DEPS` env-var contract
+
+`--with-deps` follows the same single-source-of-truth pattern as
+`--editable` (see §2.1) and `--dry-run` (see §2.1.1).
+`lib.run_make_deploy` (`lib.py:454-471`) either sets
+`DEPLOY_WITH_DEPS=1` in the subprocess env (when `--with-deps` is
+passed) or strips `DEPLOY_WITH_DEPS` from the copied env (when it
+isn't). Per-project Makefiles that want to opt into less-strict
+precondition behavior under an explicit "rebuild everything"
+invocation can read `DEPLOY_WITH_DEPS` directly.
+
+Current consumer: `bbsengine6/py/src/Makefile precheck-editable`.
+With `DEPLOY_WITH_DEPS` empty (the default), the precheck
+hard-fails if the active venv has an editable install of
+`bbsengine6`. With `DEPLOY_WITH_DEPS=1`, the precheck warns and
+proceeds; the post-install `verify-install` macro (same file) then
+becomes the actual correctness check — the editable `.pth` finder
+shadows the wheel install, `pip show` disagrees with the wheel's
+METADATA, and the deploy aborts with a precise diagnosis. Projects
+that don't read `DEPLOY_WITH_DEPS` are unaffected by either branch.
+
+Unlike `--editable`, `--with-deps` does NOT need to plumb aliases
+(EDITABLE, DEV) — there are no legacy names. There is no
+deploytool-controlled "lock" mode for `DEPLOY_WITH_DEPS`; if the
+operator wants the precheck to hard-fail under all conditions, they
+omit `--with-deps` (or strip the env var themselves).
 
 ### 3.1 Sub-target dedup
 

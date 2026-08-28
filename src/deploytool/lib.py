@@ -437,10 +437,11 @@ def run_make_deploy(args, project, sub=None):
     label = f"{project}.{sub}" if sub else project
 
     # Always copy the operator's env so PATH and friends are preserved,
-    # then control the editable-mode + dry-run vars explicitly so
-    # deploytool is the sole source of truth (an operator who happens to
-    # have DEPLOY_EDITABLE=1 or DEPLOY_DRY_RUN=1 in their shell does not
-    # accidentally trigger that mode without passing the matching flag).
+    # then control the editable-mode + with-deps + dry-run vars
+    # explicitly so deploytool is the sole source of truth (an operator
+    # who happens to have DEPLOY_EDITABLE=1, DEPLOY_WITH_DEPS=1, or
+    # DEPLOY_DRY_RUN=1 in their shell does not accidentally trigger that
+    # mode without passing the matching flag).
     env = os.environ.copy()
     if getattr(args, "editable", False):
         env["DEPLOY_EDITABLE"] = "1"
@@ -453,6 +454,22 @@ def run_make_deploy(args, project, sub=None):
         # editable mode via a stale shell var.
         for var in ("DEPLOY_EDITABLE", "EDITABLE", "DEV"):
             env.pop(var, None)
+
+    # --with-deps plumbing: per-project Makefiles (specifically
+    # bbsengine6/py/src/Makefile precheck-editable) read
+    # DEPLOY_WITH_DEPS to decide whether to hard-fail or warn-and-
+    # proceed on an editable-in-venv precondition. The flag is
+    # also a no-op for projects that don't read it, which is the
+    # whole point — extend the contract per-project without
+    # coupling deploytool to any project's invocation semantics.
+    # Match the DEPLOY_EDITABLE pattern: set explicitly when the
+    # matching CLI flag is passed, strip (rather than preserve) when
+    # not, so a stray shell var can't accidentally flip a Makefile
+    # out of its default branch.
+    if getattr(args, "with_deps", False):
+        env["DEPLOY_WITH_DEPS"] = "1"
+    else:
+        env.pop("DEPLOY_WITH_DEPS", None)
 
     dry_run = getattr(args, "dry_run", False)
     if dry_run:

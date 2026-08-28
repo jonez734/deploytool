@@ -309,6 +309,101 @@ def test_buildargs_with_deps_compatible_with_editable():
     assert args.editable is True
 
 
+# ---------------------------------------------------------------------------
+# DEPLOY_WITH_DEPS env-var plumbing (lib.run_make_deploy)
+#
+# `--with-deps` is plumbed into the subprocess env as `DEPLOY_WITH_DEPS=1`
+# so per-project Makefiles (specifically bbsengine6/py/src/Makefile
+# precheck-editable) can opt into a less-strict precondition check.
+# Mirrors the DEPLOY_EDITABLE env-var pattern; follows the same
+# single-source-of-truth contract (set when CLI flag is passed, strip
+# from inherited env when not, so a stray shell var can't accidentally
+# flip a Makefile out of its default branch).
+# ---------------------------------------------------------------------------
+
+import subprocess as _std_subprocess
+import types as _types
+from argparse import Namespace as _Namespace
+
+
+def _make_args(projects, **overrides):
+    """Build a Namespace matching the shape lib.run_make_deploy reads."""
+    defaults = dict(
+        projects=projects,
+        host="merlin",
+        dry_run=False,
+        verify=False,
+        editable=False,
+        with_deps=False,
+    )
+    defaults.update(overrides)
+    return _Namespace(**defaults)
+
+
+def _completed(returncode=0, stdout="", stderr=""):
+    return _types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def test_run_make_deploy_with_deps_sets_env_var(monkeypatch):
+    """--with-deps plumbs DEPLOY_WITH_DEPS=1 into the subprocess env."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env", {})
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    args = _make_args(["bbsengine6.tui"], with_deps=True)
+    assert deploytool.lib.run_make_deploy(args, "bbsengine6", "tui") == 0
+
+    assert captured["env"].get("DEPLOY_WITH_DEPS") == "1"
+    # Sanity-check: also covers the canonical with_deps sub-target name
+    # flowing through the make command vector.
+    assert captured["cmd"][:3] == ["make", "-C", f"{deploytool.lib.SOURCE_BASE}/bbsengine6"]
+
+
+def test_run_make_deploy_without_with_deps_strips_env_var(monkeypatch):
+    """Without --with-deps, a stray DEPLOY_WITH_DEPS=1 in the operator's
+    shell is stripped so the per-project Makefile falls back to its
+    default branch. Mirrors the DEPLOY_EDITABLE strip-on-inherit
+    contract documented in SPECS.md §2.1."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs["env"]
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    monkeypatch.delenv("DEPLOY_WITH_DEPS", raising=False)
+    monkeypatch.setenv("DEPLOY_WITH_DEPS", "1")
+
+    args = _make_args(["bbsengine6.tui"], with_deps=False)
+    deploytool.lib.run_make_deploy(args, "bbsengine6", "tui")
+    assert "DEPLOY_WITH_DEPS" not in captured["env"]
+
+
+def test_run_make_deploy_with_deps_does_not_touch_editable_strip(monkeypatch):
+    """--with-deps and --editable are orthogonal; passing --with-deps
+    alone must still strip DEPLOY_EDITABLE so an operator with a stale
+    DEPLOY_EDITABLE=1 in their shell doesn't accidentally flip into
+    editable install mode."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs["env"]
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    monkeypatch.delenv("DEPLOY_EDITABLE", raising=False)
+    monkeypatch.setenv("DEPLOY_EDITABLE", "1")
+
+    args = _make_args(["bbsengine6.tui"], with_deps=True, editable=False)
+    deploytool.lib.run_make_deploy(args, "bbsengine6", "tui")
+    assert captured["env"].get("DEPLOY_WITH_DEPS") == "1"
+    assert "DEPLOY_EDITABLE" not in captured["env"]
+
+
 if __name__ == "__main__":
     import sys
 
