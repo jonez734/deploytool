@@ -76,7 +76,8 @@ def test_bare_bbsengine6_is_ambiguous(monkeypatch):
     """`deploy bbsengine6` (bare) lists all three subs and exits 1."""
     msgs = []
     monkeypatch.setattr(
-        deploytool.lib.io, "echo",
+        deploytool.lib.io,
+        "echo",
         lambda text, *a, **kw: msgs.append(text),
     )
 
@@ -103,7 +104,8 @@ def test_bare_bbsengine6_under_with_deps_is_also_ambiguous(monkeypatch):
     """
     msgs = []
     monkeypatch.setattr(
-        deploytool.lib.io, "echo",
+        deploytool.lib.io,
+        "echo",
         lambda text, *a, **kw: msgs.append(text),
     )
 
@@ -173,7 +175,8 @@ def test_legacy_www_sub_errors(monkeypatch):
     available list — confirms the rename took effect."""
     msgs = []
     monkeypatch.setattr(
-        deploytool.lib.io, "echo",
+        deploytool.lib.io,
+        "echo",
         lambda text, *a, **kw: msgs.append(text),
     )
 
@@ -229,8 +232,7 @@ def test_bbsengine6_makefile_defines_deploy_wwworg():
     assert makefile.is_file(), f"{makefile} not found"
     text = makefile.read_text()
     assert "deploy-wwworg:" in text, (
-        "bbsengine6/Makefile must define a deploy-wwworg target. "
-        f"Got:\n{text}"
+        f"bbsengine6/Makefile must define a deploy-wwworg target. Got:\n{text}"
     )
 
 
@@ -245,8 +247,7 @@ def test_bbsengine6_makefile_defines_deploy_wwwcom():
     assert makefile.is_file(), f"{makefile} not found"
     text = makefile.read_text()
     assert "deploy-wwwcom:" in text, (
-        "bbsengine6/Makefile must define a deploy-wwwcom target. "
-        f"Got:\n{text}"
+        f"bbsengine6/Makefile must define a deploy-wwwcom target. Got:\n{text}"
     )
 
 
@@ -281,6 +282,82 @@ def test_bbsengine6_makefile_defines_wwwcom_target():
         "bbsengine6/Makefile must define a `wwwcom:` target that the "
         "deploy-wwwcom wrapper can delegate to."
     )
+
+
+# ---------------------------------------------------------------------------
+# templates_c handling on the www push rsyncs
+#
+# templates_c is a Smarty *runtime* cache that lives on the remote
+# (/srv/www/vhosts/{www.bbsengine.org,www.bbsengine.com}/templates_c/)
+# and is referenced by config\SMARTYCOMPILEDTEMPLATESDIR in
+# www/{org,com}/config-prod.php. It is NEVER a deploy artifact — the
+# per-sub stage Makefiles may still mkdir it for local dev, but the
+# push rsyncs in www/Makefile must --exclude it so:
+#
+#   1. an empty local templates_c/ doesn't rsync --delete the remote's
+#      populated cache on every deploy;
+#   2. freshly-created remote dirs end up group-writable + setgid
+#      (`--chmod=Dg+rwxs`) so Smarty can write compiled templates
+#      without operator intervention.
+# ---------------------------------------------------------------------------
+
+
+def test_www_push_rsyncs_exclude_templates_c_and_setgid_dirs():
+    """Both push rsyncs in bbsengine6/www/Makefile must --exclude 'templates_c'
+    and --chmod=Dg+rwxs.
+
+    Regression guard for the bbsengine6.wwworg / bbsengine6.wwwcom deploy
+    silently wiping the remote Smarty cache on every push (because stage
+    creates templates_c/ empty locally and the rsync --delete-after walks
+    into it). The push site is the single chokepoint where the protection
+    belongs, so this test asserts the Makefile shape directly rather than
+    chasing it through make-rule expansion.
+    """
+    from pathlib import Path
+
+    www_makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "www" / "Makefile"
+    assert www_makefile.is_file(), f"{www_makefile} not found"
+    text = www_makefile.read_text()
+
+    for needle in (
+        '--exclude "templates_c"',
+        "--chmod=Dg+rwxs",
+    ):
+        assert text.count(needle) == 2, (
+            f"bbsengine6/www/Makefile: expected exactly two occurrences of "
+            f"{needle!r} (one on the wwworg push, one on the wwwcom push); "
+            f"got {text.count(needle)}. Both push rsyncs must protect the "
+            f"remote templates_c/ cache the same way."
+        )
+
+
+def test_wwworg_and_wwwcom_stage_templates_c_locally_with_gitkeep():
+    """Per-sub Makefiles keep their templates_c/ mkdir (for local dev)
+    but add a .gitkeep so an empty stage dir doesn't confuse rsync.
+
+    The push-rsync --exclude is what actually protects the remote; the
+    local mkdir + .gitkeep exists so a developer running `make -C
+    www/org stage` gets a usable templates_c/ on their workstation.
+    """
+    from pathlib import Path
+
+    for sub, marker in (
+        ("org", "ORGSTAGE"),
+        ("com", "COMSTAGE"),
+    ):
+        makefile = (
+            Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "www" / sub / "Makefile"
+        )
+        text = makefile.read_text()
+        assert f"mkdir -p $({marker})templates_c/" in text, (
+            f"{sub}/Makefile: lost its templates_c/ mkdir. Local dev needs "
+            f"the dir to exist for Smarty to compile templates into."
+        )
+        assert ".gitkeep" in text, (
+            f"{sub}/Makefile: missing `touch .../templates_c/.gitkeep`. "
+            f"Without the sentinel, rsync warns about an empty dir being "
+            f"recreated on every push."
+        )
 
 
 if __name__ == "__main__":
