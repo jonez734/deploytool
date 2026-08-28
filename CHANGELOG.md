@@ -21,7 +21,10 @@ releases bump the patch). Dates are the day the commit landed on
   subs, legacy `www` rejection, make-target wiring
   (`deploy-wwworg` / `deploy-wwwcom`), and Makefile-level
   presence of the wrapper rules plus their `wwworg:` / `wwwcom:`
-  delegate targets.
+  delegate targets. Plus two `templates_c`-handling assertions:
+  the www push rsyncs must `--exclude "templates_c"` and
+  `--chmod=Dg+rwxs`, and the per-sub `stage` targets must keep
+  their `mkdir .../templates_c/` plus a `.gitkeep` sentinel.
 - `--with-deps` CLI flag (default `false`). When set, the resolver
   walks transitive dependencies for every requested project. When
   unset (the default), only the projects the caller explicitly
