@@ -8,6 +8,21 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Added
+- `VERIFY_INSTALL` Makefile variable in `Makefile`, wired into the
+  non-editable branch of the `install` target via `@$(VERIFY_INSTALL)`
+  (after `$(PIP) install --no-deps $(WHEEL)`). Mirrors the reference
+  implementation in `zoidoffice/src/Makefile`: extracts the expected
+  `Version` from the wheel's filename (regex) and from `unzip -p
+  $(WHEEL) '*/METADATA'`, runs `$(PIP) show $(PROJECT)`, and asserts
+  all three agree. On mismatch, prints the verbatim `pip show` output
+  (stdout) and aborts with a summary on stderr (`exit 1`). Catches
+  the silent-no-op case where `pip install <wheel>` exits 0 without
+  actually replacing an existing install (different venv,
+  orphaned .dist-info, permission-denied mid-install, etc.). The
+  editable branch (`DEPLOY_EDITABLE=1`) installs from source, not a
+  wheel, so it skips this check — `pip show` for an editable install
+  reports the source-tree version, not a wheel version, and the
+  comparison semantics differ. See README and `SPECS.md`.
 - `bbsengine6.wwworg` and `bbsengine6.wwwcom` sub-targets. The
   `bbsengine6/Makefile` defines matching `deploy-wwworg` /
   `deploy-wwwcom` wrapper rules that delegate to the existing

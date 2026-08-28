@@ -53,14 +53,47 @@ ifeq ($(DEPLOY_EDITABLE),1)
 	-rm -rf src/$(PROJECT).egg-info
 else
 	$(PIP) install --no-deps $(WHEEL)
-	# TODO(verify-install): after this `pip install` of $(WHEEL),
-	# compare the wheel's METADATA Version against `pip show deploytool`
-	# to catch the silent-no-op case where pip reports "already
-	# installed" without actually installing. See zoidoffice/src/Makefile's
-	# VERIFY_INSTALL variable for the reference implementation. Editable
-	# branch (DEPLOY_EDITABLE=1, line 52) installs from source, not a
-	# wheel, so no check there.
+	@$(VERIFY_INSTALL)
 endif
+
+# Verify that the wheel just installed is the one `pip show` reports
+# as installed. Catches the silent-no-op case where `pip install <wheel>`
+# exits 0 without actually replacing an existing install (different
+# venv, orphaned .dist-info, permission-denied mid-install, etc.). On
+# mismatch, prints the verbatim `pip show` output (stdout) and aborts
+# the deploy with a summary (stderr). Mirrors the reference
+# implementation in zoidoffice/src/Makefile.
+#
+# Three values are compared:
+#   - filename:  regex-extracted from the wheel filename
+#   - METADATA:  Version: line from the wheel's METADATA (unzip -p)
+#   - pip show:  Version: line from `pip show $(PROJECT)` post-install
+#
+# All three must agree. Editable installs (DEPLOY_EDITABLE=1) skip
+# this — `pip show` for an editable install reports the *source-tree*
+# version, not a wheel version, and the comparison semantics differ.
+VERIFY_INSTALL = \
+	EXPECTED_FROM_FILENAME=$$(basename '$(WHEEL)' | sed -E 's/^$(PROJECT)-(.+)-py3-none-any\.whl$$/\1/'); \
+	EXPECTED_FROM_METADATA=$$(unzip -p '$(WHEEL)' '*/METADATA' 2>/dev/null | awk -F': ' '/^Version: / {print $$2; exit}'); \
+	echo "=== verify-install ($(PROJECT)) ==="; \
+	echo "  wheel filename Version: $$EXPECTED_FROM_FILENAME"; \
+	echo "  wheel METADATA Version: $$EXPECTED_FROM_METADATA"; \
+	echo "--- pip show $(PROJECT) ---"; \
+	SHOW_OUTPUT=$$($(PIP) show $(PROJECT) 2>&1); \
+	SHOW_RC=$$?; \
+	echo "$$SHOW_OUTPUT"; \
+	echo "(pip show exited $$SHOW_RC)"; \
+	echo "--- end pip show ---"; \
+	INSTALLED=$$(echo "$$SHOW_OUTPUT" | awk '/^Version: / {print $$2; exit}'); \
+	if [ "$$INSTALLED" != "$$EXPECTED_FROM_FILENAME" ] \
+		|| [ "$$INSTALLED" != "$$EXPECTED_FROM_METADATA" ]; then \
+		echo "verify-install FAILED: $(WHEEL) was installed but pip show does not agree" >&2; \
+		echo "  expected filename:  $$EXPECTED_FROM_FILENAME" >&2; \
+		echo "  expected METADATA:  $$EXPECTED_FROM_METADATA" >&2; \
+		echo "  pip show Version:   $$INSTALLED" >&2; \
+		exit 1; \
+	fi; \
+	echo "verify-install OK: pip show reports $$INSTALLED"
 
 deploy-tui: install
 
