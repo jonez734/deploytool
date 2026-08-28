@@ -53,6 +53,13 @@ ifeq ($(DEPLOY_EDITABLE),1)
 	-rm -rf src/$(PROJECT).egg-info
 else
 	$(PIP) install --no-deps $(WHEEL)
+	# TODO(verify-install): after this `pip install` of $(WHEEL),
+	# compare the wheel's METADATA Version against `pip show deploytool`
+	# to catch the silent-no-op case where pip reports "already
+	# installed" without actually installing. See zoidoffice/src/Makefile's
+	# VERIFY_INSTALL variable for the reference implementation. Editable
+	# branch (DEPLOY_EDITABLE=1, line 52) installs from source, not a
+	# wheel, so no check there.
 endif
 
 deploy-tui: install
