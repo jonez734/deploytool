@@ -319,6 +319,11 @@ def test_buildargs_with_deps_compatible_with_editable():
 # single-source-of-truth contract (set when CLI flag is passed, strip
 # from inherited env when not, so a stray shell var can't accidentally
 # flip a Makefile out of its default branch).
+#
+# End-to-end pinning of the contract this env var supports (precheck
+# hard-fail vs. warn-and-proceed, and the verify-install catch when
+# the editable .pth finder actually shadows the wheel install) lives
+# in tests/test_deploy_shadow_install.py.
 # ---------------------------------------------------------------------------
 
 import subprocess as _std_subprocess

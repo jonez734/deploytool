@@ -185,6 +185,33 @@ deploytool-controlled "lock" mode for `DEPLOY_WITH_DEPS`; if the
 operator wants the precheck to hard-fail under all conditions, they
 omit `--with-deps` (or strip the env var themselves).
 
+#### 2.2.1.1 Editable-shadow contract (PEP 660)
+
+The reason the `DEPLOY_WITH_DEPS` env var exists at all is the
+PEP 660 editable-installer shadow: when an editable install of
+`bbsengine6` already lives in the active venv, `pip install
+<wheel>` writes a fresh `dist-info/` but the editable's
+`__editable___bbsengine6_*_finder` `.pth` hook wins on `import`,
+so the operator's TUI keeps loading source-tree code while
+`pip show` reports the freshly-installed wheel version. There is
+no in-place fix — editable and wheel installs of the same
+distribution name cannot coexist in one venv.
+
+Under `DEPLOY_WITH_DEPS` unset (the default), the
+`bbsengine6/py/src/Makefile precheck-editable` recipe bails
+non-zero before the install even runs, with a breadcrumb naming
+the editable source path and the two clean remedies
+(`deploy --editable bbsengine6.tui` to stay editable;
+`pip uninstall bbsengine6 && deploy bbsengine6.tui` to switch to
+wheels). Under `DEPLOY_WITH_DEPS=1`, the precheck warns and
+proceeds; the post-install `verify-install` macro
+(`Makefile:69-91`) then becomes the actual correctness contract —
+the editable `.pth` finder shadows the wheel install, `pip show`
+disagrees with the wheel's METADATA, and the deploy aborts with a
+precise diagnosis naming the editable-install cause. End-to-end
+pinning of both contracts lives in
+`tests/test_deploy_shadow_install.py`.
+
 ### 3.1 Sub-target dedup
 
 A single `deploy` call that requests the same base with multiple subs

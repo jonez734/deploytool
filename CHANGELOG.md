@@ -52,6 +52,18 @@ releases bump the patch). Dates are the day the commit landed on
   both `--with-deps` and the default), single-sub auto-pick,
   explicit-sub chain walking under `--with-deps`, and CLI parser
   round-trips.
+- `test_deploy_shadow_install.py` — end-to-end regression
+  coverage for the PEP 660 editable-installer shadow on
+  `deploy bbsengine6.tui`. Pins all four contracts: precheck
+  hard-fail under the default (no `--with-deps`), precheck
+  warn-and-proceed under `--with-deps`, the
+  `verify-install`-catches-the-shadow correctness check that
+  only fires under `--with-deps`, and the negative control
+  (no editable install, clean deploy). Catches the regression
+  that drops `$(verify-install)` from
+  `bbsengine6/py/src/Makefile:186-187` or removes the
+  `DEPLOY_WITH_DEPS` env-var plumbing in
+  `lib.run_make_deploy`. See `SPECS.md §2.2.1.1`.
 
 ### Changed
 - `TARGETS['bbsengine6']` changed from `['tui', 'www']` to
