@@ -47,12 +47,26 @@ build: version
 # /srv/repo/ OUTDIR that Phase 0 introduced for the other
 # projects.
 DEPLOY_EDITABLE ?=
+
+# DEPLOY_UPGRADE is set by `deploytool --upgrade` (default true) and
+# unset by `--no-upgrade`. When "1", `pip install` invocations below
+# pass `--upgrade` so the install replaces any prior version of the
+# same distribution and pulls the newest transitive deps from PyPI.
+# When empty, the prior behavior holds: pip is a no-op if the wheel
+# version already matches what's installed, and transitive deps are
+# whatever was in the target venv at deploy time. The install-venv
+# block always upgrades `pip` itself (`pip install --upgrade pip`) —
+# that's not gated on DEPLOY_UPGRADE because a stale `pip` breaks
+# everything downstream and is unrelated to the project's wheel
+# install.
+DEPLOY_UPGRADE ?=
+PIP_UPGRADE_FLAG := $(if $(filter 1,$(DEPLOY_UPGRADE)),--upgrade,)
 install: build
 ifeq ($(DEPLOY_EDITABLE),1)
-	cd src && $(PIP) install --no-cache-dir -e .
+	cd src && $(PIP) install $(PIP_UPGRADE_FLAG) --no-cache-dir -e .
 	-rm -rf src/$(PROJECT).egg-info
 else
-	$(PIP) install --no-deps $(WHEEL)
+	$(PIP) install $(PIP_UPGRADE_FLAG) --no-deps $(WHEEL)
 	@$(VERIFY_INSTALL)
 endif
 
@@ -104,7 +118,7 @@ install-venv:
 	@command -v sudo >/dev/null 2>&1 || { echo "Error: sudo required"; exit 1; }
 	@sudo -u $(VENV_OWNER) test -d "$(VENV_DIR)" || sudo -u $(VENV_OWNER) $(PYTHON) -m venv "$(VENV_DIR)"
 	sudo -u $(VENV_OWNER) $(VENV_DIR)/bin/pip install --upgrade pip
-	sudo -u $(VENV_OWNER) $(VENV_DIR)/bin/pip install --quiet build setuptools wheel
+	sudo -u $(VENV_OWNER) $(VENV_DIR)/bin/pip install $(PIP_UPGRADE_FLAG) --quiet build setuptools wheel
 	@echo "Ensured venv at $(VENV_DIR) (owner: $(VENV_OWNER):$(VENV_GROUP))"
 
 uninstall-venv:
