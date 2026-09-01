@@ -8,6 +8,47 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Added
+- `--upgrade` / `--no-upgrade` CLI flag (default: `--upgrade`). When
+  enabled, deploytool sets `DEPLOY_UPGRADE=1` in the subprocess env
+  so every per-project Makefile splices `--upgrade` into its
+  `pip install` lines; the install replaces any prior version of the
+  same distribution and pulls the newest transitive deps from PyPI.
+  When `--no-upgrade` is passed, deploytool strips `DEPLOY_UPGRADE`
+  from the subprocess env (mirroring the `DEPLOY_EDITABLE` /
+  `DEPLOY_WITH_DEPS` / `DEPLOY_DRY_RUN` strip-on-inherit pattern),
+  and per-project Makefiles fall through to the prior no-op-if-
+  version-matches behavior. **Behavior change**: deploys now pass
+  `--upgrade` by default, so transitive deps track their PyPI
+  releases between deploys. Operators who need a hermetic deploy
+  against the wheels in `$(OUTDIR)` only should pass `--no-upgrade`.
+  Same env-var contract as the existing `DEPLOY_EDITABLE` /
+  `DEPLOY_WITH_DEPS` / `DEPLOY_DRY_RUN` vars: literal-string
+  `ifeq ($(DEPLOY_UPGRADE),1)` match — deploytool is the canonical
+  writer (sets to `1` or strips entirely). See README and
+  `SPECS.md §2.3`.
+- Per-project Makefile wiring for `DEPLOY_UPGRADE` (each project
+  declares `DEPLOY_UPGRADE ?=`, defines
+  `PIP_UPGRADE_FLAG := $(if $(filter 1,$(DEPLOY_UPGRADE)),--upgrade,)`,
+  and splices `$(PIP_UPGRADE_FLAG)` into every `pip install` line):
+  `deploytool/Makefile`, `bbsengine6/Makefile`,
+  `bbsengine6/py/src/Makefile`, `bed/Makefile`, `casino/Makefile`,
+  `zoid6/src/Makefile`, `zoidoffice/src/Makefile`,
+  `getdate_next/Makefile`, `yummyjam/article2/Makefile`,
+  `mistermcfeely/Makefile`. The `pip install --upgrade pip` line in
+  each `install-venv` block is intentionally NOT gated on
+  `DEPLOY_UPGRADE` — a stale `pip` breaks everything downstream and
+  is unrelated to the project wheel install.
+- `test_deploy_upgrade.py` — regression coverage for the `--upgrade`
+  / `--no-upgrade` flag and the `DEPLOY_UPGRADE` env-var plumbing.
+  Mirrors `test_deploy_with_deps.py`: CLI parser round-trip (default
+  on, `--no-upgrade` flips it), `run_make_deploy` env-var propagation
+  (sets `DEPLOY_UPGRADE=1` by default, strips when `--no-upgrade` is
+  passed, strips a pre-existing `DEPLOY_UPGRADE` shell var when
+  `--no-upgrade` is passed), and Makefile-presence assertions that
+  each per-project Makefile declares `DEPLOY_UPGRADE ?=` and splices
+  `$(PIP_UPGRADE_FLAG)` into its `pip install` lines.
+
+### Added
 - `VERIFY_INSTALL` Makefile variable in `Makefile`, wired into the
   non-editable branch of the `install` target via `@$(VERIFY_INSTALL)`
   (after `$(PIP) install --no-deps $(WHEEL)`). Mirrors the reference

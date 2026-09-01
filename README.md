@@ -44,6 +44,7 @@ deploy [options] project[.sub] [project[.sub] ...]
 | `--debug` | Debug mode |
 | `--editable` | Install per-project Python packages in editable mode (`pip install -e`); sets `DEPLOY_EDITABLE=1` in the `make` env |
 | `--with-deps` | Include transitive dependencies in the chain. Without it, only explicitly named projects are built (default: `false`). Bare bases (no `.sub`) under `--with-deps` also auto-expand to all subs. Bare bases without `--with-deps` list the available subs and exit `1`. |
+| `--upgrade` / `--no-upgrade` | Pass `--upgrade` to every `pip install` in the deploy chain (default: enabled). Sets `DEPLOY_UPGRADE=1` in the `make` env when enabled; per-project Makefiles splice `--upgrade` into their `pip install` lines accordingly. Pass `--no-upgrade` for a hermetic deploy against the wheels in `$(OUTDIR)` only. |
 
 ### Examples
 
