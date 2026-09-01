@@ -7,7 +7,49 @@ releases bump the patch). Dates are the day the commit landed on
 
 ## [Unreleased]
 
+### Changed
+- `deploy mistermcfeely` (bare) is now **ambiguous** — the
+  resolver exits 1 listing `[tui, prod]`. Previously mistermcfeely
+  was bare-base (no `TARGETS` entry) and the bare invocation ran
+  the umbrella `make deploy` target. Callers must now write
+  `deploy mistermcfeely.tui` (operator-side, no sudo) or
+  `deploy mistermcfeely.prod` (sudo umbrella install into
+  `/var/lib/zoid6/venv`). Mirrors the existing bed/zoid6
+  multi-sub pattern.
+
 ### Added
+- `mistermcfeely` now has `[tui, prod]` sub-targets in `TARGETS`
+  (`src/deploytool/lib.py:133`), so `deploy mistermcfeely.tui`
+  and `deploy mistermcfeely.prod` resolve via the standard
+  sub-target machinery (was bare-base before; bare invocation
+  now exits 1 listing the subs, matching the bed/zoid6 pattern).
+  See `SPECS.md §5.1` for the tui/prod contract.
+- `mistermcfeely/Makefile`:
+  - New `OUTDIR = /srv/repo/mistermcfeely/` (canonical cross-
+    project OUTDIR, matching bed/casino/zoid6).
+  - New `deploy-tui` target — operator-side (no sudo): builds
+    bbsengine6 + mistermcfeely wheels into `$(OUTDIR)`, runs
+    precheck-editable against the operator's active venv, then
+    installs (editable or wheel) into the active venv and runs
+    verify-install. Same shape as `casino.tui`.
+  - New `deploy-prod` target — sudo umbrella alias for the
+    full `install` chain (sysusers + tmpfiles + venv + systemd
+    + etc), forwarding `DEPLOY_EDITABLE`/`DEPLOY_WITH_DEPS`/
+    `DEPLOY_UPGRADE` to the sub-make.
+  - New `build` target — operator-side wheel build, used by
+    `deploy-tui` and re-invoked by `install-venv` to keep
+    `$(OUTDIR)` in sync with the current source.
+  - New `precheck-editable` macro — multi-package (loops over
+    `WHEEL_PACKAGES := bbsengine6 mistermcfeely`), no sudo,
+    reads `dist-info/direct_url.json` directly per PEP 610 to
+    detect PEP 660 editable-shadow installs. Branches on
+    `DEPLOY_WITH_DEPS` (hard-fail vs. warn-and-proceed).
+  - New `verify-install` macro — multi-package, no sudo, reads
+    `dist-info/METADATA` directly (no `pip show`), compares
+    against the wheel's filename and METADATA Version.
+  - The `pip install --upgrade pip` line is intentionally NOT
+    gated on `DEPLOY_UPGRADE` — stale pip breaks everything
+    downstream.
 - `--upgrade` / `--no-upgrade` CLI flag (default: `--upgrade`). When
   enabled, deploytool sets `DEPLOY_UPGRADE=1` in the subprocess env
   so every per-project Makefile splices `--upgrade` into its

@@ -312,23 +312,34 @@ in the final order.
 
 ### 3.2 `prod` opt-in
 
-`prod` is a sudo-umbrella install for `bed` and `zoid6` and must not
-run by default. The drop gate (`lib.py:362`) keeps `prod` out of the
-final order unless the caller named it explicitly
-(`deploy bed.prod`) or a transitive explicit dep named it. Bare-base
-invocation never pulls in `prod` because it never auto-expands
-(§2.2) — callers must name `prod` to opt in.
+`prod` is a sudo-umbrella install for `bed`, `zoid6`, and
+`mistermcfeely` and must not run by default. The drop gate
+(`lib.py:362`) keeps `prod` out of the final order unless the
+caller named it explicitly (`deploy bed.prod`,
+`deploy mistermcfeely.prod`) or a transitive explicit dep
+named it. Bare-base invocation never pulls in `prod` because it
+never auto-expands (§2.2) — callers must name `prod` to opt in.
+
+For `mistermcfeely` specifically, the `prod` sub-target is the
+only one that uses `sudo`. The `tui` sub-target is operator-side
+(no sudo) — it builds wheels into `/srv/repo/mistermcfeely/` and
+installs into the operator's active venv. The split exists so
+the cross-project PEP 660 editable-shadow precheck and
+verify-install macros can run from operator context without
+needing `sudo` to query the target venv's dist-info. See §5.1
+for the tui/prod shape contract.
 
 ## 4. Sub-targets
 
-Encoded in `lib.py:121-133` (`TARGETS`). A bare sub is `[None]`,
+Encoded in `lib.py:121-134` (`TARGETS`). A bare sub is `[None]`,
 meaning "no `deploy-<sub>` suffix; run the project's bare `deploy`
 target." Project records in `TARGETS` look like:
 
 ```
-"casino": ["tui", "www"],
-"bed":    ["tui", "venv", "prod"],
-"getdate_next": ["tui"],
+"casino":        ["tui", "www"],
+"bed":           ["tui", "venv", "prod"],
+"getdate_next":  ["tui"],
+"mistermcfeely": ["tui", "prod"],
 ```
 
 Bare-base invocation semantics (see `lib.resolve` lines
@@ -360,6 +371,69 @@ when the user requested that sub. Applied by `run_make_deploy`
 - `("getdate_next", "tui")` → `"venv"` — same reason.
 
 Bare projects (sub is `None`) get `deploy` as the make target.
+
+### 5.1 `tui` / `prod` split (mistermcfeely)
+
+`mistermcfeely` is the only project whose `tui` sub-target
+installs into the **shared zoid6 venv** (`/var/lib/zoid6/venv`)
+rather than the operator's active venv. The split into `tui`
+(operator-side, no sudo) and `prod` (sudo umbrella) exists so
+the PEP 660 editable-shadow precheck and verify-install macros
+can run from operator context without `sudo`.
+
+**`deploy mistermcfeely.tui`** (no sudo, no `sudo -u zoid6`):
+
+1. Builds `bbsengine6` + `mistermcfeely` wheels into
+   `/srv/repo/mistermcfeely/` (the canonical cross-project
+   `OUTDIR`, matching `bed/OUTDIR=/srv/repo/bed/` and
+   `casino/OUTDIR=/srv/repo/casino/`).
+2. Runs `precheck-editable` against the operator's active venv
+   (reads `dist-info/direct_url.json` directly; no `pip show`,
+   no `sudo`).
+3. Either installs editable from source (`DEPLOY_EDITABLE=1`,
+   set by `deploytool --editable`) or installs the freshly-built
+   wheel into the operator's active venv.
+4. Runs `verify-install` against the operator's active venv
+   (reads `dist-info/METADATA` directly; no `pip show`,
+   no `sudo`).
+
+**`deploy mistermcfeely.prod`** (sudo umbrella):
+
+1. Runs `install-sysusers` (`sudo rsync` + `sudo systemd-sysusers`).
+2. Runs `install-tmpfiles` (`sudo rsync` + `sudo systemd-tmpfiles`).
+3. Runs `install-venv` (the only target with shared-venv
+   install logic):
+   - Creates the venv at `/var/lib/zoid6/venv` via
+     `sudo -u zoid6 ...` if missing.
+   - Upgrades pip and installs `build setuptools wheel` into
+     the shared venv via `sudo -u zoid6 $(VENV_DIR)/bin/pip ...`.
+   - Runs `precheck-editable` as the operator (no sudo) using
+     `$(VENV_DIR)/bin/python` to resolve site-packages for the
+     shared venv — direct `dist-info/direct_url.json` reads.
+   - Re-runs `make build` so the wheels in `/srv/repo/...`
+     reflect the current source (the operator doesn't have to
+     call `deploy-tui` first).
+   - Installs `$(OUTDIR)/*.whl` into the shared venv via
+     `sudo -u zoid6 $(VENV_DIR)/bin/pip install ...`.
+   - Runs `verify-install` as the operator (no sudo) using
+     `$(VENV_DIR)/bin/python` — direct `dist-info/METADATA` reads.
+4. Runs `install-systemd` (`sudo tee` + `sudo systemctl daemon-reload`).
+5. Runs `install-etc` (multiple `sudo rsync` invocations for
+   `mcfeely-authd.conf`, `saslauthd.*`, `pam.d-saslauthd`).
+
+**Why precheck + verify don't use `sudo`:** they read the
+target venv's `dist-info/` directly via `sysconfig.get_paths()["purelib"]`
+run by the venv's own `python` interpreter. The interpreter is
+invoked by the operator shell (no sudo); `site-packages/` and
+`dist-info/` are world-readable in a normal pip install; the
+macros SKIP with a message if they're not (rather than failing
+with permission-denied).
+
+The two macros (`precheck-editable`, `verify-install`) iterate
+over `WHEEL_PACKAGES := bbsengine6 mistermcfeely` so a single
+macro call covers the batch install. Adding a new package whose
+wheel is also installed by `install-venv` is a one-line change
+to that variable.
 
 ## 6. Aliases
 

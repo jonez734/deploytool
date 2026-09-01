@@ -130,6 +130,7 @@ TARGETS = {
     "bed": ["tui", "venv", "prod"],
     "bbsengine6": ["tui", "wwworg", "wwwcom"],
     "getdate_next": ["tui"],
+    "mistermcfeely": ["tui", "prod"],
 }
 
 # Sub-target -> actual make `deploy-*` target. Some sub-target names are
@@ -245,7 +246,7 @@ def resolve(projects, with_deps=False):
     #   - With TARGETS and no sub named, AND exactly one sub in TARGETS:
     #     auto-pick that single sub (no ambiguity possible). E.g.
     #     `deploy getdate_next` -> `getdate_next.tui`.
-    #   - Without TARGETS (e.g. `mistermcfeely`, `asimov`): no
+    #   - Without TARGETS (e.g. `asimov`, `letteredolive`, `atlas`): no
     #     ambiguity; runs the bare `make deploy` target.
     project_info = {}
     # Subs the caller (or a transitive explicit dep) named explicitly.
