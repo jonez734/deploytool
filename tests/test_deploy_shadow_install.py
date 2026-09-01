@@ -268,6 +268,384 @@ def test_no_shadow_install_passes_silently(monkeypatch):
     assert captured["cmd"][-1] == "deploy-tui"
 
 
+# ---------------------------------------------------------------------------
+# mistermcfeely: precheck-editable + verify-install + tui/prod split
+#
+# mistermcfeely is the first project in the deploy chain whose
+# install target hits a *shared* venv owned by another user
+# (zoid6 owns /var/lib/zoid6/venv) and whose `tui` sub-target runs
+# without sudo while `prod` runs with sudo. The PEP 660 editable-
+# shadow precheck and the post-install verify-install check have to
+# run from operator context (no sudo) but still query the right
+# venv — see `mistermcfeely/Makefile` macros and `SPECS.md §5.1`.
+#
+# These tests pin the Makefile shape so a future commit can't drop
+# the multi-package loop, the no-sudo dist-info reads, the
+# `DEPLOY_WITH_DEPS` branching, or the `tui` / `prod` / `build`
+# target wiring.
+# ---------------------------------------------------------------------------
+
+import os as _os
+
+
+_MISTERMCFEELY_MAKEFILE = "/home/opencode/data/work/mistermcfeely/Makefile"
+
+
+@pytest.fixture
+def mistermcfeely_makefile():
+    if not _os.path.exists(_MISTERMCFEELY_MAKEFILE):
+        pytest.skip(f"{_MISTERMCFEELY_MAKEFILE} not present (sibling repo absent)")
+    return _os.path.realpath(_MISTERMCFEELY_MAKEFILE)
+
+
+def _read_text(path):
+    return open(path).read()
+
+
+def test_mistermcfeely_declares_wheel_packages(mistermcfeely_makefile):
+    """mistermcfeely/Makefile declares `WHEEL_PACKAGES := bbsengine6 mistermcfeely`
+    at the top so precheck-editable and verify-install iterate over
+    every package whose wheel lands in $(OUTDIR). Without this
+    variable, the macros have no list to loop over and the
+    multi-package batch install is unchecked.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    assert "WHEEL_PACKAGES" in text, (
+        "mistermcfeely/Makefile is missing WHEEL_PACKAGES. The "
+        "precheck-editable and verify-install macros iterate over "
+        "this list so a single macro covers the batch install "
+        "(bbsengine6 wheel + mistermcfeely wheel). Add "
+        "`WHEEL_PACKAGES := bbsengine6 mistermcfeely` to the "
+        "variable block at the top of the Makefile."
+    )
+    assert "WHEEL_PACKAGES := bbsengine6 mistermcfeely" in text, (
+        "WHEEL_PACKAGES is declared but doesn't list both "
+        "bbsengine6 and mistermcfeely. The batch install lands "
+        "both wheels into the shared zoid6 venv, so both must be "
+        "precheck'd and verify'd."
+    )
+
+
+def test_mistermcfeely_defines_outdir(mistermcfeely_makefile):
+    """mistermcfeely/Makefile declares `OUTDIR = /srv/repo/$(PROJECT)/`
+    (which expands to `/srv/repo/mistermcfeely/`) so wheels land in
+    the canonical cross-project OUTDIR (matching bed/OUTDIR=
+    /srv/repo/bed/, casino/OUTDIR=/srv/repo/casino/, zoid6/OUTDIR=
+    /srv/repo/zoid6/). The shared OUTDIR is what the prod-target
+    install-venv consumes via `ls -t $(OUTDIR)/*.whl`.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    # Accept either the literal form or the $(PROJECT) expansion —
+    # both compile to /srv/repo/mistermcfeely/ at make-time.
+    assert (
+        "OUTDIR = /srv/repo/mistermcfeely/" in text
+        or "OUTDIR = /srv/repo/$(PROJECT)/" in text
+    ), (
+        "mistermcfeely/Makefile is missing "
+        "`OUTDIR = /srv/repo/mistermcfeely/` (or the equivalent "
+        "`OUTDIR = /srv/repo/$(PROJECT)/`). The canonical cross-"
+        "project OUTDIR is what makes `deploy mistermcfeely.prod` "
+        "self-contained — install-venv consumes from $(OUTDIR) via "
+        "`ls -t $(OUTDIR)/*.whl` after `make build` populates it."
+    )
+
+
+def test_mistermcfeely_defines_precheck_editable(mistermcfeely_makefile):
+    """mistermcfeely/Makefile defines the precheck-editable macro via
+    `define`/`endef` (recipe-time, so it can use shell-only
+    constructs like `cat direct_url.json` and `$(PYTHON) -c ...`).
+    """
+    text = _read_text(mistermcfeely_makefile)
+    assert "define precheck-editable" in text, (
+        "mistermcfeely/Makefile is missing `define precheck-editable`. "
+        "The PEP 660 editable-shadow precheck must run as a recipe-"
+        "time macro so it can read dist-info/direct_url.json "
+        "directly (PEP 610) without invoking pip show (which would "
+        "need sudo)."
+    )
+    assert "endef" in text, "macro definition is missing the closing `endef`"
+
+
+def test_mistermcfeely_defines_verify_install(mistermcfeely_makefile):
+    """mistermcfeely/Makefile defines the verify-install macro via
+    `define`/`endef`. Catches the silent-no-op case where
+    `pip install <wheel>` exits 0 without replacing an existing
+    install.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    assert "define verify-install" in text, (
+        "mistermcfeely/Makefile is missing `define verify-install`. "
+        "The post-install triple-check (filename / METADATA / "
+        "dist-info Version) catches silent no-ops where pip "
+        "reports success but didn't actually replace the prior "
+        "install."
+    )
+    assert "endef" in text, "macro definition is missing the closing `endef`"
+
+
+def test_mistermcfeely_macros_iterate_over_wheel_packages(mistermcfeely_makefile):
+    """Both macros iterate over `$(WHEEL_PACKAGES)` so a single
+    macro call covers the batch install. If a future commit
+    hardcodes `bbsengine6` instead of looping, the multi-package
+    contract is silently broken.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    precheck_section = text.split("define precheck-editable", 1)[1].split("endef", 1)[0]
+    verify_section = text.split("define verify-install", 1)[1].split("endef", 1)[0]
+    assert "for pkg in $(WHEEL_PACKAGES)" in precheck_section, (
+        "precheck-editable does not iterate over $(WHEEL_PACKAGES). "
+        "The batch install lands both bbsengine6 + mistermcfeely "
+        "wheels; the precheck must check both."
+    )
+    assert "for pkg in $(WHEEL_PACKAGES)" in verify_section, (
+        "verify-install does not iterate over $(WHEEL_PACKAGES). "
+        "The batch install lands both bbsengine6 + mistermcfeely "
+        "wheels; verify must check both."
+    )
+
+
+def test_mistermcfeely_macros_use_no_sudo_dist_info_reads(mistermcfeely_makefile):
+    """The macros read dist-info directly via the venv's own python,
+    NOT via pip show, and NOT via sudo. This is the no-sudo contract
+    that lets deploy-tui run from operator context while still
+    querying the shared zoid6 venv correctly.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    precheck_section = text.split("define precheck-editable", 1)[1].split("endef", 1)[0]
+    verify_section = text.split("define verify-install", 1)[1].split("endef", 1)[0]
+
+    # Both macros resolve site-packages via sysconfig, not pip show.
+    assert "sysconfig.get_paths" in precheck_section, (
+        "precheck-editable does not resolve site-packages via "
+        "sysconfig.get_paths(). Without sysconfig, the macro can't "
+        "locate the venv's site-packages directory from operator "
+        "context without invoking pip (which would need sudo)."
+    )
+    assert "sysconfig.get_paths" in verify_section, (
+        "verify-install does not resolve site-packages via "
+        "sysconfig.get_paths(). Without sysconfig, the macro can't "
+        "locate the venv's dist-info directory from operator "
+        "context without invoking pip (which would need sudo)."
+    )
+
+    # Both macros read dist-info directly (no pip show).
+    assert "direct_url.json" in precheck_section, (
+        "precheck-editable does not read direct_url.json. PEP 660 "
+        "editable installs write `dir_info: {editable: true}` to "
+        "direct_url.json; wheel installs do not. The grep on "
+        "direct_url.json catches the editable case."
+    )
+    assert "dist-info" in verify_section, (
+        "verify-install does not read dist-info. The post-install "
+        "check compares the wheel's filename Version / METADATA "
+        "Version against the dist-info's METADATA Version — the "
+        "direct file read avoids pip show and runs without sudo."
+    )
+
+    # Neither macro should ever invoke sudo. The contract: precheck
+    # and verify are operator-context; sudo is only used in
+    # install-venv's actual pip install line (line ~363), not in
+    # the macros themselves.
+    assert "sudo" not in precheck_section, (
+        "precheck-editable contains a sudo invocation. The "
+        "no-sudo contract is required for deploy-tui (which runs as "
+        "the operator) and for the install-venv precheck (which "
+        "queries the shared venv via direct file reads)."
+    )
+    assert "sudo" not in verify_section, (
+        "verify-install contains a sudo invocation. Same rationale."
+    )
+
+
+def test_mistermcfeely_precheck_respects_deploy_with_deps(mistermcfeely_makefile):
+    """precheck-editable branches on DEPLOY_WITH_DEPS (literal-string
+    `=1` match): hard-fail under default, warn-and-proceed under
+    --with-deps. Without the branch, an editable install would
+    either always silently no-op (wrong) or always hard-fail (also
+    wrong).
+    """
+    text = _read_text(mistermcfeely_makefile)
+    precheck_section = text.split("define precheck-editable", 1)[1].split("endef", 1)[0]
+    assert 'if [ "$(DEPLOY_WITH_DEPS)" = "1" ]' in precheck_section, (
+        "precheck-editable is missing the DEPLOY_WITH_DEPS branch. "
+        "When deploytool --with-deps is set, the precheck must "
+        "warn-and-proceed (the post-install verify-install becomes "
+        "the correctness check). Without --with-deps, hard-fail."
+    )
+    assert "exit 1" in precheck_section, (
+        "precheck-editable is missing the hard-fail exit. Under "
+        "DEPLOY_WITH_DEPS unset, an editable install must abort the "
+        "deploy rather than silently no-op."
+    )
+
+
+def test_mistermcfeely_defines_deploy_tui_target(mistermcfeely_makefile):
+    """mistermcfeely/Makefile has a `deploy-tui` target (no sudo).
+    Mirrors casino.tui's shape: precheck-editable, then either
+    editable install from source or wheel install from $(OUTDIR),
+    then verify-install.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    assert "deploy-tui:" in text, (
+        "mistermcfeely/Makefile is missing the `deploy-tui` target. "
+        "This is the operator-side install path (no sudo) called "
+        "by `deploy mistermcfeely.tui`."
+    )
+
+
+def test_mistermcfeely_defines_deploy_prod_target(mistermcfeely_makefile):
+    """mistermcfeely/Makefile has a `deploy-prod` target — sudo
+    umbrella alias for the full install chain. Mirrors the
+    bed/zoid6 `prod` pattern.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    assert "deploy-prod:" in text, (
+        "mistermcfeely/Makefile is missing the `deploy-prod` target. "
+        "This is the sudo umbrella install called by "
+        "`deploy mistermcfeely.prod`."
+    )
+
+
+def test_mistermcfeely_deploy_tui_invokes_precheck_and_verify(mistermcfeely_makefile):
+    """The deploy-tui recipe invokes precheck-editable at the top
+    and verify-install after the wheel install. If a future commit
+    drops either invocation, the silent-no-op returns.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    deploy_tui_section = text.split("deploy-tui:", 1)[1].split("\n\n", 1)[0]
+    assert "$(precheck-editable)" in deploy_tui_section, (
+        "deploy-tui recipe does not invoke precheck-editable. "
+        "Without the precheck, an editable install in the "
+        "operator's active venv would silently shadow the wheel "
+        "install (PEP 660 trap)."
+    )
+    assert "$(verify-install)" in deploy_tui_section, (
+        "deploy-tui recipe does not invoke verify-install. "
+        "Without the post-install check, a silent-no-op install "
+        "(wrong venv, orphaned dist-info, permission-denied "
+        "mid-install) goes undetected."
+    )
+
+
+def test_mistermcfeely_install_venv_invokes_precheck_and_verify(mistermcfeely_makefile):
+    """The install-venv recipe (sudo path into the shared zoid6
+    venv) also invokes precheck-editable and verify-install. Both
+    run as the operator with `VENV_PYTHON=$(VENV_DIR)/bin/python`
+    so they query the shared venv correctly without sudo.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    install_venv_section = text.split("install-venv:", 1)[1].split("\n\n", 1)[0]
+    assert "$(precheck-editable)" in install_venv_section, (
+        "install-venv recipe does not invoke precheck-editable. "
+        "An editable install of bbsengine6 or mistermcfeely in the "
+        "shared zoid6 venv would silently shadow the wheel install."
+    )
+    assert "$(verify-install)" in install_venv_section, (
+        "install-venv recipe does not invoke verify-install. The "
+        "sudo pip install at line ~363 needs a post-check to "
+        "catch silent no-ops."
+    )
+    assert "VENV_PYTHON=$(VENV_DIR)/bin/python" in install_venv_section, (
+        "install-venv recipe does not set VENV_PYTHON to "
+        "$(VENV_DIR)/bin/python before invoking the macros. "
+        "Without this, the macros resolve site-packages for the "
+        "operator's active venv (which may differ from the shared "
+        "zoid6 venv) and report incorrect results."
+    )
+
+
+def test_mistermcfeely_deploy_prod_forwards_env_vars(mistermcfeely_makefile):
+    """deploy-prod forwards DEPLOY_EDITABLE, DEPLOY_WITH_DEPS, and
+    DEPLOY_UPGRADE to the install sub-make. Without forwarding,
+    an operator running `deploy --with-deps mistermcfeely.prod`
+    would see the precheck hard-fail instead of warn-and-proceed.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    deploy_prod_section = text.split("deploy-prod:", 1)[1].split("\n\n", 1)[0]
+    assert "DEPLOY_EDITABLE=$(DEPLOY_EDITABLE)" in deploy_prod_section, (
+        "deploy-prod does not forward DEPLOY_EDITABLE. Without "
+        "this, an operator's `--editable` choice would silently "
+        "no-op for `deploy mistermcfeely.prod`."
+    )
+    assert "DEPLOY_WITH_DEPS=$(DEPLOY_WITH_DEPS)" in deploy_prod_section, (
+        "deploy-prod does not forward DEPLOY_WITH_DEPS. Without "
+        "this, the precheck-editable hard-fail branch is always "
+        "taken even under `deploy --with-deps mistermcfeely.prod`."
+    )
+    assert "DEPLOY_UPGRADE=$(DEPLOY_UPGRADE)" in deploy_prod_section, (
+        "deploy-prod does not forward DEPLOY_UPGRADE. Without "
+        "this, the sudo pip install at line ~363 would not honor "
+        "the operator's `--upgrade` / `--no-upgrade` choice."
+    )
+
+
+# ---------------------------------------------------------------------------
+# deploytool TARGETS: mistermcfeely is registered
+# ---------------------------------------------------------------------------
+
+
+def test_deploytool_targets_includes_mistermcfeely_tui_prod():
+    """deploytool/lib.py TARGETS includes 'mistermcfeely': ['tui', 'prod']
+    so `deploy mistermcfeely.tui` and `deploy mistermcfeely.prod`
+    resolve via the standard sub-target machinery. Bare
+    `deploy mistermcfeely` becomes ambiguous (lists [tui, prod])
+    matching the bed/zoid6 multi-sub pattern.
+    """
+    import importlib
+    # Reload lib in case pytest re-orders fixtures vs. earlier tests.
+    lib = importlib.reload(deploytool.lib)
+    assert "mistermcfeely" in lib.TARGETS, (
+        "deploytool/lib.py TARGETS is missing 'mistermcfeely'. "
+        "Without this entry, bare `deploy mistermcfeely` falls "
+        "through to the bare-base branch (no TARGETS) and runs the "
+        "umbrella `make deploy` target — which has been removed "
+        "in favor of the explicit tui/prod split."
+    )
+    assert lib.TARGETS["mistermcfeely"] == ["tui", "prod"], (
+        f"deploytool/lib.py TARGETS['mistermcfeely'] = "
+        f"{lib.TARGETS['mistermcfeely']!r}; expected ['tui', 'prod']. "
+        f"Order matters: 'tui' is the operator-side default; "
+        f"'prod' is the sudo umbrella install."
+    )
+
+
+# ---------------------------------------------------------------------------
+# mistermcfeely: precheck-editable respects the no-sudo constraint
+# even when called from install-venv (the shared-venv path).
+# ---------------------------------------------------------------------------
+
+
+def test_mistermcfeely_install_venv_uses_no_sudo_macros(mistermcfeely_makefile):
+    """Even though install-venv itself uses sudo (for the actual
+    pip install), the precheck-editable and verify-install
+    invocations within it must NOT be wrapped in sudo. They query
+    the shared venv via direct file reads from operator context.
+    """
+    text = _read_text(mistermcfeely_makefile)
+    install_venv_section = text.split("install-venv:", 1)[1].split("\n\n", 1)[0]
+
+    # Find the lines invoking precheck-editable and verify-install.
+    precheck_lines = [
+        line for line in install_venv_section.splitlines()
+        if "$(precheck-editable)" in line
+    ]
+    verify_lines = [
+        line for line in install_venv_section.splitlines()
+        if "$(verify-install)" in line
+    ]
+    assert precheck_lines, "precheck-editable is not invoked from install-venv"
+    assert verify_lines, "verify-install is not invoked from install-venv"
+    for line in precheck_lines + verify_lines:
+        assert "sudo" not in line, (
+            f"install-venv invokes a macro with sudo: {line!r}. "
+            f"The macros are designed to run from operator context "
+            f"via direct dist-info reads; wrapping them in sudo "
+            f"would either fail with permission-denied (because "
+            f"$VENV_PYTHON doesn't resolve site-packages under "
+            f"sudo) or query the wrong venv."
+        )
+
+
 if __name__ == "__main__":
     import sys
 

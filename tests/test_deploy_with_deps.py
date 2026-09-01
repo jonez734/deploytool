@@ -133,9 +133,25 @@ def test_bare_single_sub_target_auto_picks_even_without_with_deps():
 
 
 def test_bare_project_without_targets_runs_bare():
-    """Projects with no TARGETS run bare `make deploy` (no ambiguity possible)."""
-    order = deploytool.lib.resolve(["mistermcfeely"], with_deps=False)
-    assert order == [("mistermcfeely", None)]
+    """Projects with no TARGETS run bare `make deploy` (no ambiguity possible).
+
+    Note: mistermcfeely was bare-base at this test's origin but
+    migrated to TARGETS=['tui','prod'] (see deploytool/CHANGELOG.md
+    Unreleased / Changed). Pick another bare-base project for the
+    negative-control assertion — `asimov` is the canonical
+    remaining bare-base example.
+    """
+    order = deploytool.lib.resolve(["asimov"], with_deps=False)
+    assert order == [("asimov", None)]
+
+
+def test_bare_mistermcfeely_is_ambiguous_with_subs():
+    """`deploy mistermcfeely` (bare) is now ambiguous after mistermcfeely
+    was added to TARGETS=['tui','prod']. The resolver exits 1 listing
+    the available subs. Mirrors the bed/zoid6 multi-sub pattern.
+    """
+    with pytest.raises(SystemExit):
+        deploytool.lib.resolve(["mistermcfeely"], with_deps=False)
 
 
 # ---------------------------------------------------------------------------
