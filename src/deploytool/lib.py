@@ -1,8 +1,8 @@
+import argparse
 import os
 import re
 import subprocess
 import sys
-from argparse import ArgumentParser
 
 from bbsengine6 import io, module
 
@@ -167,7 +167,7 @@ def runmodule(args, modulename, **kwargs):
 
 
 def buildargs(args=None, **kwargs):
-    parser = ArgumentParser(usage="usage: deploy.py [options] project [project ...]")
+    parser = argparse.ArgumentParser(usage="usage: deploy.py [options] project [project ...]")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--debug", action="store_true", help="debug mode")
     parser.add_argument("projects", nargs="+", help="project names to deploy")
@@ -211,6 +211,23 @@ def buildargs(args=None, **kwargs):
              "regardless of this flag; the resolver lists the subs and "
              "exits 1. Name a sub explicitly (e.g. `deploy casino.tui`) "
              "to avoid the ambiguity. (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--upgrade",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        dest="upgrade",
+        help="pass `--upgrade` to every `pip install` in the deploy chain. "
+             "Default: enabled (the deploy will `pip install --upgrade ...` "
+             "for each project wheel and its runtime deps, so transitive "
+             "deps track their PyPI releases between deploys). Pass "
+             "`--no-upgrade` to restore the prior behavior of pinning "
+             "transitive deps to whatever was already in the target venv "
+             "(useful when the deploy must be hermetic and reproducible "
+             "against the wheels in $(OUTDIR) only). Sets `DEPLOY_UPGRADE=1` "
+             "in the subprocess env when enabled; per-project Makefiles "
+             "read `DEPLOY_UPGRADE` and add `--upgrade` to their `pip install` "
+             "lines accordingly.",
     )
     return parser
 
@@ -477,6 +494,24 @@ def run_make_deploy(args, project, sub=None):
         env["DEPLOY_DRY_RUN"] = "1"
     else:
         env.pop("DEPLOY_DRY_RUN", None)
+
+    # DEPLOY_UPGRADE plumbing: per-project Makefiles read DEPLOY_UPGRADE
+    # and add `--upgrade` to their `pip install` lines when it equals 1.
+    # Inverted default vs DEPLOY_EDITABLE / DEPLOY_WITH_DEPS: those are
+    # opt-in flags, so they're set to "1" when the matching CLI flag is
+    # passed and stripped when it isn't. `--upgrade` is opt-out (default
+    # true) so the logic is the same shape — set when enabled, strip
+    # when disabled — but `getattr(args, "upgrade", True)` defaults to
+    # True instead of False, matching argparse's `BooleanOptionalAction`
+    # default. This keeps a stale shell var from silently downgrading a
+    # fresh deploy: if the operator passed nothing and has
+    # `DEPLOY_UPGRADE=` (empty) in their shell, the strip branch leaves
+    # the env empty and per-project Makefiles' `ifeq ($(DEPLOY_UPGRADE),1)`
+    # falls through to the non-upgrade branch, matching the CLI intent.
+    if getattr(args, "upgrade", True):
+        env["DEPLOY_UPGRADE"] = "1"
+    else:
+        env.pop("DEPLOY_UPGRADE", None)
 
     if dry_run:
         io.echo(f"{{yellow}}dry-run:{{/all}} {' '.join(cmd)}")

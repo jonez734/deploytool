@@ -29,6 +29,7 @@ deploy [options] project[.sub] [project[.sub] ...]
 | `--debug` | Debug mode |
 | `--editable` | Install per-project Python packages in editable mode (`pip install -e`). Sets `DEPLOY_EDITABLE=1` in the `make` invocation's environment so each per-project Makefile can swap wheel install for editable install. See §2.1. |
 | `--with-deps` | Include transitive dependencies in the chain. Default `false` — only caller-named projects run (no transitive dep walking). `--with-deps` does NOT auto-expand bare-base invocation; bare-base is ambiguous whenever `len(TARGETS[foo]) > 1` regardless of this flag. See §2.2. |
+| `--upgrade` / `--no-upgrade` | Pass `--upgrade` to every `pip install` in the deploy chain. Default: enabled (the `deploy` command is opt-out, unlike the rest of the flags). Sets `DEPLOY_UPGRADE=1` in the `make` env when enabled; per-project Makefiles splice `--upgrade` into their `pip install` lines. Pass `--no-upgrade` for a hermetic deploy against the wheels in `$(OUTDIR)` only. See §2.3. |
 
 Bare-base invocation rules (see §4 Sub-targets for detail):
 
@@ -212,6 +213,96 @@ precise diagnosis naming the editable-install cause. End-to-end
 pinning of both contracts lives in
 `tests/test_deploy_shadow_install.py`.
 
+### 2.3 `--upgrade` / `--no-upgrade` semantics
+
+`--upgrade` is the **only** CLI flag in deploytool whose default is
+*enabled* — the other flags (`--editable`, `--with-deps`,
+`--dry-run`, `--verify`) are all opt-in. Rationale: the deploy
+chain is the standard way to bring a venv up to the freshly-built
+wheel, and operators expect transitive deps to track their PyPI
+releases between deploys (otherwise stale `requests`, `urllib3`,
+etc. accumulate across deploys and become a security liability).
+Operators who need a hermetic deploy against the wheels in
+`$(OUTDIR)` only (e.g. for a CI smoke test or an offline prod
+deploy) pass `--no-upgrade`.
+
+**Default (no flag):**
+
+- `lib.run_make_deploy` sets `DEPLOY_UPGRADE=1` in the subprocess
+  env. Every per-project Makefile splices `--upgrade` into its
+  `pip install` lines so the install replaces any prior version of
+  the same distribution and pulls the newest transitive deps from
+  PyPI.
+
+**With `--no-upgrade`:**
+
+- `lib.run_make_deploy` strips `DEPLOY_UPGRADE` from the copied
+  env (mirroring the `DEPLOY_EDITABLE` / `DEPLOY_WITH_DEPS` /
+  `DEPLOY_DRY_RUN` strip-on-inherit pattern). Per-project
+  Makefiles fall through to the prior no-op-if-version-matches
+  behavior: `pip install <wheel>` is a no-op when the wheel
+  version already matches what's installed, and transitive deps
+  stay whatever they were in the target venv at deploy time.
+
+**Env-var contract (`DEPLOY_UPGRADE`):**
+
+The literal-string comparison `ifeq ($(DEPLOY_UPGRADE),1)` is the
+gate per project Makefiles use to decide whether to splice
+`--upgrade`. deploytool is the canonical writer: it sets to `1`
+when `--upgrade` is in effect (the default), strips entirely
+when `--no-upgrade` is passed. The literal-string match is
+intentional — `ifeq` is exact-match, so any operator-shell
+artifact like `DEPLOY_UPGRADE=true` or `DEPLOY_UPGRADE=on` falls
+through to the no-upgrade branch. Operators should set this only
+via the `--upgrade` / `--no-upgrade` CLI flags; setting it
+directly in the shell is unsupported.
+
+There are no legacy aliases for `DEPLOY_UPGRADE` (no `UPGRADE`
+or `UPGRADE_PIP` to mirror the `EDITABLE` / `DEV` legacy names).
+The only consumer of `DEPLOY_UPGRADE` is each per-project
+Makefile's `pip install` invocation. The `pip install --upgrade
+pip` line in each `install-venv` block is intentionally NOT
+gated on `DEPLOY_UPGRADE` — a stale `pip` breaks everything
+downstream and is unrelated to the project wheel install.
+
+#### 2.3.1 Per-project Makefile wiring
+
+Every per-project Makefile in the deploy chain declares
+`DEPLOY_UPGRADE ?=` and a derived `PIP_UPGRADE_FLAG`:
+
+```make
+DEPLOY_UPGRADE ?=
+PIP_UPGRADE_FLAG := $(if $(filter 1,$(DEPLOY_UPGRADE)),--upgrade,)
+```
+
+`PIP_UPGRADE_FLAG` is then spliced into every `pip install` line
+in the Makefile — yielding e.g.
+`$(PIP) install $(PIP_UPGRADE_FLAG) --no-cache-dir $$WHEEL`
+in `bbsengine6/py/src/Makefile:deploy-tui`. When
+`DEPLOY_UPGRADE` is unset (empty), the variable expands to the
+empty string, and the recipe line is byte-identical to the
+pre-`--upgrade` form. Per-project files wired up:
+
+- `deploytool/Makefile`
+- `bbsengine6/Makefile` (top-level; also forwards
+  `DEPLOY_UPGRADE=$(DEPLOY_UPGRADE)` to the `py/src` sub-make at
+  the `deploy-tui` target)
+- `bbsengine6/py/src/Makefile`
+- `bed/Makefile`
+- `casino/Makefile`
+- `zoid6/src/Makefile` (covers `install`, `install-dev`,
+  `egg-info`, `deploy-tui`, `install-venv`, and `install-user`)
+- `zoidoffice/src/Makefile`
+- `getdate_next/Makefile`
+- `yummyjam/article2/Makefile` (covers `install` and
+  `install-dev`)
+- `mistermcfeely/Makefile`
+
+Regression coverage: `tests/test_deploy_upgrade.py` asserts
+each of those files declares `DEPLOY_UPGRADE ?=` and defines
+`PIP_UPGRADE_FLAG := ...`, and that the `pip install` lines
+contain the `$(PIP_UPGRADE_FLAG)` splice.
+
 ### 3.1 Sub-target dedup
 
 A single `deploy` call that requests the same base with multiple subs
@@ -314,6 +405,12 @@ production deploys in the past:
   `deploy-venv` resolution; bbsengine6.tui conditional dep.
 - `test_deploy_getdate_next_tui.py` — `PREPARE_BUILD` invariants
   (foreign-owned `build/` chmod EPERM; `chmod 1775` not `chmod g-s`).
+- `test_deploy_upgrade.py` — `--upgrade` / `--no-upgrade` flag,
+  `DEPLOY_UPGRADE` env-var plumbing (set when flag is passed /
+  default-on, stripped when `--no-upgrade` is passed, strips a
+  pre-existing shell var), and Makefile-presence assertions that
+  each per-project Makefile in §2.3.1 declares `DEPLOY_UPGRADE ?=`
+  and splices `$(PIP_UPGRADE_FLAG)` into its `pip install` lines.
 
 Tests invoke `make` against real sibling-project Makefiles, so they
 require the source trees under `SOURCE_BASE` to be present. CI or a
