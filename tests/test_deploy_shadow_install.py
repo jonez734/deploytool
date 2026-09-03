@@ -329,26 +329,33 @@ def test_mistermcfeely_declares_wheel_packages(mistermcfeely_makefile):
 
 
 def test_mistermcfeely_defines_outdir(mistermcfeely_makefile):
-    """mistermcfeely/Makefile declares `OUTDIR = /srv/repo/$(PROJECT)/`
-    (which expands to `/srv/repo/mistermcfeely/`) so wheels land in
-    the canonical cross-project OUTDIR (matching bed/OUTDIR=
-    /srv/repo/bed/, casino/OUTDIR=/srv/repo/casino/, zoid6/OUTDIR=
-    /srv/repo/zoid6/). The OUTDIR is what deploy-tui and the
-    install-venv step consume via `ls -t $(OUTDIR)/*.whl`.
+    """mistermcfeely/Makefile declares an `OUTDIR` (default `dist/`)
+    so wheels land in a writable location. The default is the local
+    project tree (`dist/`) so the operator doesn't need to be in the
+    `repo` group to write wheels; override with OUTDIR= on the make
+    command line or in the shell env to write to the cross-project
+    /srv/repo/mistermcfeely/ location (used by bed/casino/zoid6/
+    bbsengine6). The OUTDIR is what deploy-tui and the install-venv
+    step consume via `ls -t $(OUTDIR)/*.whl`.
     """
     text = _read_text(mistermcfeely_makefile)
-    # Accept either the literal form or the $(PROJECT) expansion —
-    # both compile to /srv/repo/mistermcfeely/ at make-time.
+    # Accept the literal `dist/`, the cross-project
+    # `/srv/repo/$(PROJECT)/`, the absolute `/srv/repo/mistermcfeely/`,
+    # or any `OUTDIR ?= ...` override form.
     assert (
-        "OUTDIR = /srv/repo/mistermcfeely/" in text
+        "OUTDIR ?= dist/" in text
+        or "OUTDIR = dist/" in text
+        or "OUTDIR ?= /srv/repo/mistermcfeely/" in text
+        or "OUTDIR = /srv/repo/mistermcfeely/" in text
+        or "OUTDIR ?= /srv/repo/$(PROJECT)/" in text
         or "OUTDIR = /srv/repo/$(PROJECT)/" in text
     ), (
-        "mistermcfeely/Makefile is missing "
-        "`OUTDIR = /srv/repo/mistermcfeely/` (or the equivalent "
-        "`OUTDIR = /srv/repo/$(PROJECT)/`). The canonical cross-"
-        "project OUTDIR is what makes `deploy mistermcfeely.tui` "
-        "self-contained — install-venv consumes from $(OUTDIR) via "
-        "`ls -t $(OUTDIR)/*.whl` after `make build` populates it."
+        "mistermcfeely/Makefile is missing an `OUTDIR` variable. "
+        "Default is `dist/` (local project tree); override with "
+        "OUTDIR=... to write to the cross-project /srv/repo/"
+        "mistermcfeely/ location. install-venv and deploy-tui "
+        "consume from $(OUTDIR) via `ls -t $(OUTDIR)/*.whl` after "
+        "`make build` populates it."
     )
 
 
