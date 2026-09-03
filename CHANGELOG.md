@@ -8,6 +8,21 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Changed
+- `mistermcfeely` no longer installs into `/var/lib/zoid6/venv`.
+  Both `deploy mistermcfeely.tui` and `deploy mistermcfeely.prod`
+  now install into the operator's active venv (the `VENV_USER`
+  sentinel — resolved at runtime from `$VIRTUAL_ENV` /
+  `sys.prefix`). The previous shared-zoid6-venv layout is
+  reversed: `mistermcfeely`'s `VENV_LAYOUT` entry
+  (`src/deploytool/lib.py:73`) changed from `"/var/lib/zoid6/venv"`
+  to `VENV_USER`, and `mistermcfeely/Makefile` no longer
+  references `/var/lib/zoid6/venv`, `sudo -u zoid6`, or
+  `VENV_DIR`/`VENV_OWNER`/`VENV_GROUP`. The split into `tui`
+  (operator-side) and `prod` (sudo umbrella) remains — `prod`
+  is still the only sub-target that runs `sudo` (for the FHS
+  bits: sysusers, tmpfiles, systemd, `/etc/postoffice/`,
+  saslauthd, pam.d), and it now writes the wheel install into
+  the operator's venv (no `sudo -u zoid6`). See `SPECS.md §5.1`.
 - `deploy mistermcfeely` (bare) is now **ambiguous** — the
   resolver exits 1 listing `[tui, prod]`. Previously mistermcfeely
   was bare-base (no `TARGETS` entry) and the bare invocation ran

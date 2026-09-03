@@ -271,13 +271,15 @@ def test_no_shadow_install_passes_silently(monkeypatch):
 # ---------------------------------------------------------------------------
 # mistermcfeely: precheck-editable + verify-install + tui/prod split
 #
-# mistermcfeely is the first project in the deploy chain whose
-# install target hits a *shared* venv owned by another user
-# (zoid6 owns /var/lib/zoid6/venv) and whose `tui` sub-target runs
-# without sudo while `prod` runs with sudo. The PEP 660 editable-
-# shadow precheck and the post-install verify-install check have to
-# run from operator context (no sudo) but still query the right
-# venv — see `mistermcfeely/Makefile` macros and `SPECS.md §5.1`.
+# mistermcfeely is the project with explicit `tui` and `prod`
+# sub-targets. The `tui` sub-target is operator-side (no sudo) and
+# installs into the operator's active venv; the `prod` sub-target
+# is the sudo umbrella (sysusers + tmpfiles + systemd + etc) and
+# also installs the wheel into the operator's active venv. The PEP
+# 660 editable-shadow precheck and the post-install verify-install
+# check run from operator context (no sudo) and query the operator's
+# venv via direct dist-info reads — see `mistermcfeely/Makefile`
+# macros and `SPECS.md §5.1`.
 #
 # These tests pin the Makefile shape so a future commit can't drop
 # the multi-package loop, the no-sudo dist-info reads, the
@@ -321,8 +323,8 @@ def test_mistermcfeely_declares_wheel_packages(mistermcfeely_makefile):
     assert "WHEEL_PACKAGES := bbsengine6 mistermcfeely" in text, (
         "WHEEL_PACKAGES is declared but doesn't list both "
         "bbsengine6 and mistermcfeely. The batch install lands "
-        "both wheels into the shared zoid6 venv, so both must be "
-        "precheck'd and verify'd."
+        "both wheels into the operator's active venv, so both must "
+        "be precheck'd and verify'd."
     )
 
 
@@ -331,8 +333,8 @@ def test_mistermcfeely_defines_outdir(mistermcfeely_makefile):
     (which expands to `/srv/repo/mistermcfeely/`) so wheels land in
     the canonical cross-project OUTDIR (matching bed/OUTDIR=
     /srv/repo/bed/, casino/OUTDIR=/srv/repo/casino/, zoid6/OUTDIR=
-    /srv/repo/zoid6/). The shared OUTDIR is what the prod-target
-    install-venv consumes via `ls -t $(OUTDIR)/*.whl`.
+    /srv/repo/zoid6/). The OUTDIR is what deploy-tui and the
+    install-venv step consume via `ls -t $(OUTDIR)/*.whl`.
     """
     text = _read_text(mistermcfeely_makefile)
     # Accept either the literal form or the $(PROJECT) expansion —
@@ -344,7 +346,7 @@ def test_mistermcfeely_defines_outdir(mistermcfeely_makefile):
         "mistermcfeely/Makefile is missing "
         "`OUTDIR = /srv/repo/mistermcfeely/` (or the equivalent "
         "`OUTDIR = /srv/repo/$(PROJECT)/`). The canonical cross-"
-        "project OUTDIR is what makes `deploy mistermcfeely.prod` "
+        "project OUTDIR is what makes `deploy mistermcfeely.tui` "
         "self-contained — install-venv consumes from $(OUTDIR) via "
         "`ls -t $(OUTDIR)/*.whl` after `make build` populates it."
     )
@@ -405,10 +407,11 @@ def test_mistermcfeely_macros_iterate_over_wheel_packages(mistermcfeely_makefile
 
 
 def test_mistermcfeely_macros_use_no_sudo_dist_info_reads(mistermcfeely_makefile):
-    """The macros read dist-info directly via the venv's own python,
+    """The macros read dist-info directly via the operator's python,
     NOT via pip show, and NOT via sudo. This is the no-sudo contract
-    that lets deploy-tui run from operator context while still
-    querying the shared zoid6 venv correctly.
+    that lets deploy-tui run from operator context and lets the
+    install-venv precheck query the operator's active venv via
+    direct file reads.
     """
     text = _read_text(mistermcfeely_makefile)
     precheck_section = text.split("define precheck-editable", 1)[1].split("endef", 1)[0]
@@ -443,14 +446,15 @@ def test_mistermcfeely_macros_use_no_sudo_dist_info_reads(mistermcfeely_makefile
     )
 
     # Neither macro should ever invoke sudo. The contract: precheck
-    # and verify are operator-context; sudo is only used in
-    # install-venv's actual pip install line (line ~363), not in
-    # the macros themselves.
+    # and verify are operator-context; sudo is only used in the
+    # FHS install chain (install-sysusers/install-tmpfiles/install-
+    # systemd/install-etc), not in the precheck/verify macros
+    # themselves.
     assert "sudo" not in precheck_section, (
         "precheck-editable contains a sudo invocation. The "
         "no-sudo contract is required for deploy-tui (which runs as "
         "the operator) and for the install-venv precheck (which "
-        "queries the shared venv via direct file reads)."
+        "queries the operator's venv via direct file reads)."
     )
     assert "sudo" not in verify_section, (
         "verify-install contains a sudo invocation. Same rationale."
@@ -512,45 +516,49 @@ def test_mistermcfeely_deploy_tui_invokes_precheck_and_verify(mistermcfeely_make
     drops either invocation, the silent-no-op returns.
     """
     text = _read_text(mistermcfeely_makefile)
-    deploy_tui_section = text.split("deploy-tui:", 1)[1].split("\n\n", 1)[0]
+    # Match `^deploy-tui:` (start-of-line target definition), not
+    # the error string `deploy-tui: ...` inside the precheck-editable
+    # macro body which contains a `deploy-tui:` substring.
+    deploy_tui_section = text.split("\ndeploy-tui:", 1)[1].split("\n\n", 1)[0]
     assert "$(precheck-editable)" in deploy_tui_section, (
         "deploy-tui recipe does not invoke precheck-editable. "
         "Without the precheck, an editable install in the "
         "operator's active venv would silently shadow the wheel "
         "install (PEP 660 trap)."
     )
-    assert "$(verify-install)" in deploy_tui_section, (
-        "deploy-tui recipe does not invoke verify-install. "
-        "Without the post-install check, a silent-no-op install "
-        "(wrong venv, orphaned dist-info, permission-denied "
-        "mid-install) goes undetected."
+    assert "$(verify-install)" in deploy_tui_section \
+        or "$(call verify-install" in deploy_tui_section, (
+        "deploy-tui recipe does not invoke verify-install "
+        "(directly or via $(call verify-install,...)). Without "
+        "the post-install check, a silent-no-op install (wrong "
+        "venv, orphaned dist-info, permission-denied mid-install) "
+        "goes undetected."
     )
 
 
 def test_mistermcfeely_install_venv_invokes_precheck_and_verify(mistermcfeely_makefile):
-    """The install-venv recipe (sudo path into the shared zoid6
-    venv) also invokes precheck-editable and verify-install. Both
-    run as the operator with `VENV_PYTHON=$(VENV_DIR)/bin/python`
-    so they query the shared venv correctly without sudo.
+    """The install-venv recipe (the wheel-install step prod chains
+    through, running against the operator's active venv) also
+    invokes precheck-editable and verify-install. Both run as the
+    operator with `$(OPERATOR_PYTHON)` (resolved from `$VIRTUAL_ENV`
+    / `$(PYTHON)`) so they query the operator's active venv
+    correctly without sudo.
     """
     text = _read_text(mistermcfeely_makefile)
-    install_venv_section = text.split("install-venv:", 1)[1].split("\n\n", 1)[0]
+    install_venv_section = text.split("\ninstall-venv:", 1)[1].split("\n\n", 1)[0]
     assert "$(precheck-editable)" in install_venv_section, (
         "install-venv recipe does not invoke precheck-editable. "
         "An editable install of bbsengine6 or mistermcfeely in the "
-        "shared zoid6 venv would silently shadow the wheel install."
+        "operator's active venv would silently shadow the wheel "
+        "install."
     )
-    assert "$(verify-install)" in install_venv_section, (
-        "install-venv recipe does not invoke verify-install. The "
-        "sudo pip install at line ~363 needs a post-check to "
-        "catch silent no-ops."
-    )
-    assert "VENV_PYTHON=$(VENV_DIR)/bin/python" in install_venv_section, (
-        "install-venv recipe does not set VENV_PYTHON to "
-        "$(VENV_DIR)/bin/python before invoking the macros. "
-        "Without this, the macros resolve site-packages for the "
-        "operator's active venv (which may differ from the shared "
-        "zoid6 venv) and report incorrect results."
+    assert "$(verify-install)" in install_venv_section \
+        or "$(call verify-install" in install_venv_section, (
+        "install-venv recipe does not invoke verify-install "
+        "(directly or via $(call verify-install,...)). The pip "
+        "install needs a post-check to catch silent no-ops "
+        "(wrong venv, orphaned dist-info, permission-denied "
+        "mid-install)."
     )
 
 
@@ -574,8 +582,8 @@ def test_mistermcfeely_deploy_prod_forwards_env_vars(mistermcfeely_makefile):
     )
     assert "DEPLOY_UPGRADE=$(DEPLOY_UPGRADE)" in deploy_prod_section, (
         "deploy-prod does not forward DEPLOY_UPGRADE. Without "
-        "this, the sudo pip install at line ~363 would not honor "
-        "the operator's `--upgrade` / `--no-upgrade` choice."
+        "this, the operator's venv pip install would not honor "
+        "the `--upgrade` / `--no-upgrade` choice."
     )
 
 
@@ -611,15 +619,16 @@ def test_deploytool_targets_includes_mistermcfeely_tui_prod():
 
 # ---------------------------------------------------------------------------
 # mistermcfeely: precheck-editable respects the no-sudo constraint
-# even when called from install-venv (the shared-venv path).
+# even when called from install-venv (the operator-venv path).
 # ---------------------------------------------------------------------------
 
 
 def test_mistermcfeely_install_venv_uses_no_sudo_macros(mistermcfeely_makefile):
-    """Even though install-venv itself uses sudo (for the actual
-    pip install), the precheck-editable and verify-install
-    invocations within it must NOT be wrapped in sudo. They query
-    the shared venv via direct file reads from operator context.
+    """Even when chained from the prod-path install chain, the
+    precheck-editable and verify-install invocations within
+    install-venv must NOT be wrapped in sudo. They query the
+    operator's active venv via direct file reads from operator
+    context (the operator IS the venv owner).
     """
     text = _read_text(mistermcfeely_makefile)
     install_venv_section = text.split("install-venv:", 1)[1].split("\n\n", 1)[0]
@@ -631,7 +640,7 @@ def test_mistermcfeely_install_venv_uses_no_sudo_macros(mistermcfeely_makefile):
     ]
     verify_lines = [
         line for line in install_venv_section.splitlines()
-        if "$(verify-install)" in line
+        if "$(verify-install)" in line or "$(call verify-install" in line
     ]
     assert precheck_lines, "precheck-editable is not invoked from install-venv"
     assert verify_lines, "verify-install is not invoked from install-venv"
@@ -640,9 +649,46 @@ def test_mistermcfeely_install_venv_uses_no_sudo_macros(mistermcfeely_makefile):
             f"install-venv invokes a macro with sudo: {line!r}. "
             f"The macros are designed to run from operator context "
             f"via direct dist-info reads; wrapping them in sudo "
-            f"would either fail with permission-denied (because "
-            f"$VENV_PYTHON doesn't resolve site-packages under "
-            f"sudo) or query the wrong venv."
+            f"would either fail with permission-denied (the "
+            f"operator's pip show under sudo sees root's site-"
+            f"packages, not the operator venv's) or query the "
+            f"wrong venv."
+        )
+
+
+# ---------------------------------------------------------------------------
+# mistermcfeely: the operator-venv layout is the only layout. The
+# shared-zoid6-venv model was reversed; this test pins the absence
+# of any zoid6-owned venv plumbing so a future commit can't silently
+# reintroduce the cross-project coupling.
+# ---------------------------------------------------------------------------
+
+
+def test_mistermcfeely_makefile_omits_zoid6_venv_paths(mistermcfeely_makefile):
+    """mistermcfeely/Makefile no longer references the shared
+    zoid6 venv (`/var/lib/zoid6/venv`), the `zoid6` user/group,
+    or `sudo -u zoid6`. Both `deploy-tui` and `deploy-prod` install
+    into the operator's active venv (`$(OPERATOR_VENV)`); the
+    `VENV_LAYOUT['mistermcfeely']` registry entry in deploytool
+    resolves to `VENV_USER` (the runtime operator-venv sentinel).
+    """
+    text = _read_text(mistermcfeely_makefile)
+    forbidden = [
+        ("VENV_DIR ?= /var/lib/zoid6/venv", "shared zoid6 venv path"),
+        ("VENV_OWNER ?= zoid6", "shared zoid6 venv owner"),
+        ("VENV_GROUP ?= zoid6", "shared zoid6 venv group"),
+        ("VENV_SHARED ?= /var/lib/zoid6/venv", "shared zoid6 venv SHARED sentinel"),
+        ("sudo -u zoid6", "shared-venv sudo switch"),
+        ("sudo -u $(VENV_OWNER)", "shared-venv sudo switch (legacy)"),
+        ("make -C ../zoid6", "cross-project make pointer"),
+    ]
+    for needle, what in forbidden:
+        assert needle not in text, (
+            f"mistermcfeely/Makefile contains {needle!r} ({what}). "
+            f"mistermcfeely has been decoupled from the shared zoid6 "
+            f"venv; both `deploy-tui` and `deploy-prod` install into "
+            f"the operator's active venv (`$(OPERATOR_VENV)`). Drop "
+            f"this reference."
         )
 
 

@@ -70,7 +70,7 @@ VENV_USER = None
 VENV_LAYOUT = {
     "zoid6": "/var/lib/zoid6/venv",
     "bed": "/var/lib/bed/venv",
-    "mistermcfeely": "/var/lib/zoid6/venv",
+    "mistermcfeely": VENV_USER,
     "bbsengine6": VENV_USER,
     "teos": "/var/lib/zoid6/venv",
     "murdermotel": "/var/lib/zoid6/venv",

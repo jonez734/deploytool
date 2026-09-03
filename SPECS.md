@@ -374,14 +374,14 @@ Bare projects (sub is `None`) get `deploy` as the make target.
 
 ### 5.1 `tui` / `prod` split (mistermcfeely)
 
-`mistermcfeely` is the only project whose `tui` sub-target
-installs into the **shared zoid6 venv** (`/var/lib/zoid6/venv`)
-rather than the operator's active venv. The split into `tui`
-(operator-side, no sudo) and `prod` (sudo umbrella) exists so
-the PEP 660 editable-shadow precheck and verify-install macros
-can run from operator context without `sudo`.
+`mistermcfeely` is the only project with explicit `tui` and `prod`
+sub-targets. The split exists so the PEP 660 editable-shadow
+precheck and verify-install macros can run from operator context
+without `sudo`, while `prod` still does the FHS bits
+(sysusers/tmpfiles/systemd/etc) that genuinely require elevated
+privileges.
 
-**`deploy mistermcfeely.tui`** (no sudo, no `sudo -u zoid6`):
+**`deploy mistermcfeely.tui`** (no sudo):
 
 1. Builds `bbsengine6` + `mistermcfeely` wheels into
    `/srv/repo/mistermcfeely/` (the canonical cross-project
@@ -401,33 +401,30 @@ can run from operator context without `sudo`.
 
 1. Runs `install-sysusers` (`sudo rsync` + `sudo systemd-sysusers`).
 2. Runs `install-tmpfiles` (`sudo rsync` + `sudo systemd-tmpfiles`).
-3. Runs `install-venv` (the only target with shared-venv
-   install logic):
-   - Creates the venv at `/var/lib/zoid6/venv` via
-     `sudo -u zoid6 ...` if missing.
-   - Upgrades pip and installs `build setuptools wheel` into
-     the shared venv via `sudo -u zoid6 $(VENV_DIR)/bin/pip ...`.
+3. Runs `install-venv`:
+   - Builds `bbsengine6` + `mistermcfeely` wheels into a
+     user-owned `$(WHEEL_DIR)`.
    - Runs `precheck-editable` as the operator (no sudo) using
-     `$(VENV_DIR)/bin/python` to resolve site-packages for the
-     shared venv — direct `dist-info/direct_url.json` reads.
-   - Re-runs `make build` so the wheels in `/srv/repo/...`
-     reflect the current source (the operator doesn't have to
-     call `deploy-tui` first).
-   - Installs `$(OUTDIR)/*.whl` into the shared venv via
-     `sudo -u zoid6 $(VENV_DIR)/bin/pip install ...`.
+     the operator's `python` interpreter — direct
+     `dist-info/direct_url.json` reads against the operator's
+     active venv.
+   - Installs `$(WHEEL_DIR)/*.whl` into the operator's active
+     venv via `$(PIP) install ...` (no sudo; the operator's
+     venv is theirs).
    - Runs `verify-install` as the operator (no sudo) using
-     `$(VENV_DIR)/bin/python` — direct `dist-info/METADATA` reads.
+     the operator's `python` interpreter — direct
+     `dist-info/METADATA` reads.
 4. Runs `install-systemd` (`sudo tee` + `sudo systemctl daemon-reload`).
 5. Runs `install-etc` (multiple `sudo rsync` invocations for
    `mcfeely-authd.conf`, `saslauthd.*`, `pam.d-saslauthd`).
 
 **Why precheck + verify don't use `sudo`:** they read the
-target venv's `dist-info/` directly via `sysconfig.get_paths()["purelib"]`
-run by the venv's own `python` interpreter. The interpreter is
-invoked by the operator shell (no sudo); `site-packages/` and
-`dist-info/` are world-readable in a normal pip install; the
-macros SKIP with a message if they're not (rather than failing
-with permission-denied).
+operator venv's `dist-info/` directly via `sysconfig.get_paths()["purelib"]`
+run by the operator's own `python` interpreter. The interpreter
+is invoked by the operator shell (no sudo); `site-packages/`
+and `dist-info/` are world-readable in a normal pip install;
+the macros SKIP with a message if they're not (rather than
+failing with permission-denied).
 
 The two macros (`precheck-editable`, `verify-install`) iterate
 over `WHEEL_PACKAGES := bbsengine6 mistermcfeely` so a single
