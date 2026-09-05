@@ -128,7 +128,7 @@ TARGETS = {
     "deploytool": ["tui"],
     "zoidoffice": ["tui", "www"],
     "bed": ["tui", "venv", "prod"],
-    "bbsengine6": ["tui", "wwworg", "wwwcom"],
+    "bbsengine6": ["tui", "wwworg", "wwwcom", "handbook"],
     "getdate_next": ["tui"],
     "mistermcfeely": ["tui", "prod"],
 }

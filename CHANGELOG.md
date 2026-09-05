@@ -106,6 +106,23 @@ releases bump the patch). Dates are the day the commit landed on
   `$(PIP_UPGRADE_FLAG)` into its `pip install` lines.
 
 ### Added
+- `bbsengine6.handbook` sub-target — `TARGETS["bbsengine6"]`
+  (`src/deploytool/lib.py:131`) gains a fourth entry: from
+  `["tui", "wwworg", "wwwcom"]` to `["tui", "wwworg",
+  "wwwcom", "handbook"]`. `deploy bbsengine6.handbook`
+  resolves to `make -C bbsengine6 deploy-handbook`, which
+  stages the handbook tree and pushes the org site (the
+  `wwworg` rsync chain). The bbsengine6 entry has no
+  `DEPENDENCIES`, so `--with-deps` is unchanged. The
+  bbsengine6 side (handler rewrite + shared
+  `\bbsengine6\markdown` primitive) is committed in the
+  inner `bbsengine6/` repo; the deploytool side is the
+  TARGETS addition only. Regression tests:
+  `tests/test_deploy_bbsengine6_www.py` updated to
+  assert the four-sub shape and add four sibling
+  tests mirroring wwworg/wwwcom for the handbook.
+
+### Added
 - `VERIFY_INSTALL` Makefile variable in `Makefile`, wired into the
   non-editable branch of the `install` target via `@$(VERIFY_INSTALL)`
   (after `$(PIP) install --no-deps $(WHEEL)`). Mirrors the reference

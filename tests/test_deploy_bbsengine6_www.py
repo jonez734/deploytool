@@ -1,30 +1,36 @@
-"""Tests for bbsengine6's website sub-targets (wwworg + wwwcom).
+"""Tests for bbsengine6's website sub-targets (wwworg + wwwcom)
+and the handbook sub-target.
 
-bbsengine6 exposes three subs under deploytool:
+bbsengine6 exposes four subs under deploytool:
 
-  - `bbsengine6.tui`     — Python wheel build + venv install
-                          (via `deploy-tui`).
-  - `bbsengine6.wwworg`  — stage + rsync the bbsengine.org website
-                          (`bbsengine6/www/org`). Driven by the
-                          `deploy-wwworg` wrapper in
-                          `bbsengine6/Makefile`.
-  - `bbsengine6.wwwcom`  — stage + rsync the bbsengine.com website
-                          (`bbsengine6/www/com`). Driven by the
-                          `deploy-wwwcom` wrapper.
+  - `bbsengine6.tui`      — Python wheel build + venv install
+                           (via `deploy-tui`).
+  - `bbsengine6.wwworg`   — stage + rsync the bbsengine.org website
+                           (`bbsengine6/www/org`). Driven by the
+                           `deploy-wwworg` wrapper in
+                           `bbsengine6/Makefile`.
+  - `bbsengine6.wwwcom`   — stage + rsync the bbsengine.com website
+                           (`bbsengine6/www/com`). Driven by the
+                           `deploy-wwwcom` wrapper.
+  - `bbsengine6.handbook` — stage the handbook tree and ship the
+                           blurb/markdown-rendered handler for
+                           `https://bbsengine.org/handbook/<v>/<path>`.
+                           Driven by the `deploy-handbook` wrapper.
 
 These subs are the two website deploys (`bbsengine.org`,
 `bbsengine.com`) that historically lived behind the legacy
 `bbsengine6.www` sub (which actually deployed the engine library,
-not the websites). The legacy `www` sub is removed: bare `deploy
-bbsengine6` now lists the three current subs and exits 1, and a
-caller using the legacy `bbsengine6.www` gets an "unknown
-sub-target" error naming the new ones.
+not the websites), plus the handbook. The legacy `www` sub is
+removed: bare `deploy bbsengine6` now lists the four current subs
+and exits 1, and a caller using the legacy `bbsengine6.www` gets
+an "unknown sub-target" error naming the new ones.
 
 These tests are the deploy-side counterpart to the bbsengine6
 Makefile changes that introduced `deploy-wwworg` /
-`deploy-wwwcom`. They guard against regressions where someone
-removes one of the two subs (silently reverting to a two-sub
-TARGETS) or breaks the make-rule wiring on the bbsengine6 side.
+`deploy-wwwcom` / `deploy-handbook`. They guard against
+regressions where someone removes one of the subs (silently
+reverting to a smaller TARGETS) or breaks the make-rule wiring
+on the bbsengine6 side.
 """
 
 import pytest
@@ -37,19 +43,21 @@ import deploytool.lib
 # ---------------------------------------------------------------------------
 
 
-def test_bbsengine6_targets_has_three_subs():
-    """bbsengine6 must expose exactly tui, wwworg, wwwcom.
+def test_bbsengine6_targets_has_four_subs():
+    """bbsengine6 must expose exactly tui, wwworg, wwwcom, handbook.
 
     A single-sub TARGETS would let bare `deploy bbsengine6` auto-pick,
     defeating the operator's intent to be forced to name a sub.
-    A two-sub TARGETS would silently drop one of the website deploys.
+    A two- or three-sub TARGETS would silently drop one of the four
+    sub-targets (the handbook, or one of the website deploys).
     """
     targets = deploytool.lib.get_targets("bbsengine6")
-    assert targets == ["tui", "wwworg", "wwwcom"], (
-        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom']; got {targets!r}. "
-        "Bare `deploy bbsengine6` must stay ambiguous (warn + exit 1) "
-        "so the operator names a sub explicitly, and both website deploys "
-        "(bbsengine.org, bbsengine.com) must remain reachable."
+    assert targets == ["tui", "wwworg", "wwwcom", "handbook"], (
+        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'handbook']; "
+        f"got {targets!r}. Bare `deploy bbsengine6` must stay ambiguous "
+        "(warn + exit 1) so the operator names a sub explicitly, and both "
+        "website deploys (bbsengine.org, bbsengine.com) plus the handbook "
+        "must remain reachable."
     )
 
 
@@ -73,7 +81,7 @@ def test_bbsengine6_targets_does_not_contain_legacy_www():
 
 
 def test_bare_bbsengine6_is_ambiguous(monkeypatch):
-    """`deploy bbsengine6` (bare) lists all three subs and exits 1."""
+    """`deploy bbsengine6` (bare) lists all four subs and exits 1."""
     msgs = []
     monkeypatch.setattr(
         deploytool.lib.io,
@@ -94,6 +102,7 @@ def test_bare_bbsengine6_is_ambiguous(monkeypatch):
     assert "tui" in out, "resolver must list tui in the available subs"
     assert "wwworg" in out, "resolver must list wwworg in the available subs"
     assert "wwwcom" in out, "resolver must list wwwcom in the available subs"
+    assert "handbook" in out, "resolver must list handbook in the available subs"
 
 
 def test_bare_bbsengine6_under_with_deps_is_also_ambiguous(monkeypatch):
@@ -141,6 +150,30 @@ def test_explicit_wwwcom_resolves_to_single_wwwcom_entry():
     assert order == [("bbsengine6", "wwwcom")]
 
 
+def test_explicit_handbook_resolves_to_single_handbook_entry():
+    """`deploy bbsengine6.handbook` -> [('bbsengine6', 'handbook')].
+
+    Mirror of test_explicit_wwworg_resolves_to_single_wwworg_entry for the
+    handbook sub. The handbook sub has no `DEPENDENCIES` entry, so
+    `with_deps=True` would still resolve to a single entry (no transitive
+    walking). Verified separately below.
+    """
+    order = deploytool.lib.resolve(["bbsengine6.handbook"], with_deps=False)
+    assert order == [("bbsengine6", "handbook")]
+
+
+def test_handbook_under_with_deps_still_single_entry():
+    """`deploy --with-deps bbsengine6.handbook` is a single-entry chain.
+
+    `bbsengine6` has no `DEPENDENCIES` or `CONDITIONAL_DEPENDENCIES`
+    entry, so `--with-deps` adds nothing. This guards against an
+    accidental future addition of a dep that would silently pull in
+    something the operator didn't ask for.
+    """
+    order = deploytool.lib.resolve(["bbsengine6.handbook"], with_deps=True)
+    assert order == [("bbsengine6", "handbook")]
+
+
 def test_both_www_subs_resolved_in_caller_order():
     """`deploy bbsengine6.wwworg bbsengine6.wwwcom` preserves caller order.
 
@@ -152,14 +185,15 @@ def test_both_www_subs_resolved_in_caller_order():
     assert order == [("bbsengine6", "wwworg"), ("bbsengine6", "wwwcom")]
 
 
-def test_three_subs_resolved_in_caller_order():
-    """`deploy bbsengine6.tui bbsengine6.wwworg bbsengine6.wwwcom`
-    preserves caller order across all three."""
+def test_four_subs_resolved_in_caller_order():
+    """`deploy bbsengine6.tui bbsengine6.wwworg bbsengine6.wwwcom
+    bbsengine6.handbook` preserves caller order across all four."""
     order = deploytool.lib.resolve(
         [
             "bbsengine6.tui",
             "bbsengine6.wwworg",
             "bbsengine6.wwwcom",
+            "bbsengine6.handbook",
         ],
         with_deps=False,
     )
@@ -167,6 +201,7 @@ def test_three_subs_resolved_in_caller_order():
         ("bbsengine6", "tui"),
         ("bbsengine6", "wwworg"),
         ("bbsengine6", "wwwcom"),
+        ("bbsengine6", "handbook"),
     ]
 
 
@@ -191,6 +226,7 @@ def test_legacy_www_sub_errors(monkeypatch):
     assert "tui" in out
     assert "wwworg" in out
     assert "wwwcom" in out
+    assert "handbook" in out
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +250,56 @@ def test_wwwcom_make_target_is_deploy_wwwcom():
     sub = deploytool.lib.MAKE_TARGET_ALIASES.get((project, sub), sub)
     target = f"deploy-{sub}" if sub else "deploy"
     assert target == "deploy-wwwcom"
+
+
+def test_handbook_make_target_is_deploy_handbook():
+    """run_make_deploy must construct 'deploy-handbook' for bbsengine6.handbook.
+
+    Mirror of test_wwworg_make_target_is_deploy_wwworg for the handbook
+    sub. No MAKE_TARGET_ALIASES override exists, so the target name
+    follows the rule `deploy-{sub}` verbatim.
+    """
+    project = "bbsengine6"
+    sub = "handbook"
+    sub = deploytool.lib.MAKE_TARGET_ALIASES.get((project, sub), sub)
+    target = f"deploy-{sub}" if sub else "deploy"
+    assert target == "deploy-handbook"
+
+
+def test_bbsengine6_makefile_defines_deploy_handbook():
+    """The bbsengine6 root Makefile must define a deploy-handbook target.
+
+    Same "make target must exist" regression guard as the wwworg/wwwcom
+    siblings: the deploytool-side TARGETS entry must line up with a real
+    `deploy-handbook:` rule in the bbsengine6 Makefile, otherwise
+    `deploy bbsengine6.handbook` silently fails at the make layer.
+    """
+    from pathlib import Path
+
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    assert makefile.is_file(), f"{makefile} not found"
+    text = makefile.read_text()
+    assert "deploy-handbook:" in text, (
+        f"bbsengine6/Makefile must define a deploy-handbook target. Got:\n{text}"
+    )
+
+
+def test_bbsengine6_makefile_defines_handbook_prod_target():
+    """The deploy-handbook wrapper must delegate to a real handbook-prod target.
+
+    Mirror of test_bbsengine6_makefile_defines_wwworg_target for handbook.
+    `deploy-handbook: handbook-prod` is the conventional wire-up; without
+    `handbook-prod:` the deploy is a no-op.
+    """
+    from pathlib import Path
+    import re
+
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    text = makefile.read_text()
+    assert re.search(r"^handbook-prod:", text, re.MULTILINE), (
+        "bbsengine6/Makefile must define a `handbook-prod:` target that the "
+        "deploy-handbook wrapper can delegate to."
+    )
 
 
 def test_bbsengine6_makefile_defines_deploy_wwworg():
