@@ -146,6 +146,44 @@ def get_targets(base):
     return TARGETS.get(base, [])
 
 
+def resolve_sub_prefix(sub, targets):
+    """Resolve a user-supplied sub string to the canonical sub name in
+    `targets`, allowing the shortest unique prefix.
+
+    Match rules (case-sensitive, prefix-anchored on `sub`):
+
+    - Exact match wins (preserves the historical contract for every
+      existing sub name — `tui`, `wwworg`, `handbook`, `prod`, ...).
+    - Otherwise: exactly one entry in `targets` starts with `sub` →
+      that entry is returned (shortest unique prefix within this base).
+    - Zero entries match → returns `None` ("unknown sub-target";
+      caller emits the existing error message).
+    - More than one entry starts with `sub` → returns a 2-tuple
+      `(None, [matches...])` so the caller can emit a distinct
+      ambiguous-prefix error listing the matches.
+
+    This is **not** a fuzzy match: typos like `hanbook` still error.
+    Per-base scoping means a prefix that resolves to `prod` in
+    `zoid6` does not leak into other projects whose `TARGETS`
+    happen to also contain a `prod`.
+
+    Returns either:
+      - `str` — the canonical sub name (exact or unique prefix)
+      - `None` — no match
+      - `(None, list[str])` — ambiguous prefix; `list` is the
+        set of candidate subs that started with `sub`, in
+        `TARGETS` order.
+    """
+    if sub in targets:
+        return sub
+    matches = [t for t in targets if t.startswith(sub)]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return (None, matches)
+    return None
+
+
 def get_venv_layout(base: str) -> str:
     canonical: str = ALIASES.get(base, base)
     venv = VENV_LAYOUT.get(canonical, VENV_USER)
@@ -282,7 +320,24 @@ def resolve(projects, with_deps=False):
                     ambiguous.append((base, targets))
                     subs = []
             else:
-                if sub not in targets:
+                resolved = resolve_sub_prefix(sub, targets)
+                if isinstance(resolved, tuple):
+                    # Ambiguous prefix: multiple TARGETS entries start
+                    # with `sub`. Surface a distinct error so the caller
+                    # knows the sub string wasn't unknown — it matched
+                    # too many. Listing the matches preserves the
+                    # existing "available: ..." shape.
+                    matches = resolved[1]
+                    available = ", ".join(targets)
+                    matches_str = ", ".join(matches)
+                    io.echo(
+                        f"{{red}}ambiguous sub-target prefix {{bold}}{project}{{/all}}; "
+                        f"`{sub}` matches: {matches_str} "
+                        f"(available: {available})",
+                        level="error",
+                    )
+                    sys.exit(1)
+                if resolved is None:
                     available = ", ".join(targets)
                     io.echo(
                         f"{{red}}unknown sub-target {{bold}}{project}{{/all}}; "
@@ -290,8 +345,8 @@ def resolve(projects, with_deps=False):
                         level="error",
                     )
                     sys.exit(1)
-                subs = [sub]
-                explicit_subs.add((base, sub))
+                subs = [resolved]
+                explicit_subs.add((base, resolved))
         else:
             subs = [None]
 
