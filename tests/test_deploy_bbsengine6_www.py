@@ -266,6 +266,51 @@ def test_handbook_make_target_is_deploy_handbook():
     assert target == "deploy-handbook"
 
 
+def test_handbook_prod_does_not_chain_into_www_org():
+    """`handbook-prod` must not invoke `www org`.
+
+    Regression guard: `www org`'s recipe ends with an ssh rsync to
+    host `merlin`, so chaining into it from a sub-target named
+    `handbook` would incidentally ship the entire bbsengine.org site
+    to production. Operators who want that push should run
+    `deploy bbsengine6.wwworg`, which is the documented owner of
+    the merlin rsync.
+    """
+    from pathlib import Path
+    import re
+
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    text = makefile.read_text()
+    m = re.search(r"^handbook-prod:.*?(?=^\S|\Z)", text, re.MULTILINE | re.DOTALL)
+    body = m.group(0) if m else ""
+    assert "www org" not in body, (
+        "handbook-prod must not chain into '$(MAKE) -C www org' — "
+        "that recipe ends with an ssh rsync to merlin. Use "
+        "deploy bbsengine6.wwworg for the production push."
+    )
+
+
+def test_handbook_stage_submake_receives_version():
+    """The handbook stage sub-make must receive VERSION from the parent.
+
+    Regression guard for the empty-VERSION bug: the handbook stage
+    sub-make must receive VERSION either via `export VERSION` or by
+    passing `VERSION=$(VERSION)` inline, otherwise the rsync
+    destination collapses to
+    `/srv/www/vhosts/www.bbsengine.org/html/handbook//` (empty
+    version segment) instead of a versioned directory.
+    """
+    from pathlib import Path
+
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    text = makefile.read_text()
+    assert "export VERSION" in text or "VERSION=$(VERSION)" in text, (
+        "bbsengine6/Makefile must either `export VERSION` or pass "
+        "`VERSION=$(VERSION)` to the handbook stage sub-make, otherwise "
+        "the handbook rsync destination collapses to handbook/<empty>/."
+    )
+
+
 def test_bbsengine6_makefile_defines_deploy_handbook():
     """The bbsengine6 root Makefile must define a deploy-handbook target.
 
