@@ -92,6 +92,21 @@ deploy mistermcfeely
 # bbsengine6 website deploys (bbsengine.org / bbsengine.com)
 deploy bbsengine6.wwworg
 deploy bbsengine6.wwwcom
+
+# sub prefix matching: the shortest unique prefix within a project's
+# own TARGETS list is accepted. These three are equivalent:
+deploy bbsengine6.handbook
+deploy bbsengine6.hand
+deploy bbsengine6.h
+
+# `p` -> prod in any project where prod is unique in TARGETS:
+deploy zoid6.p         # same as: deploy zoid6.prod
+deploy bed.p           # same as: deploy bed.prod
+deploy mistermcfeely.p # same as: deploy mistermcfeely.prod
+
+# ambiguous prefixes error with a distinct "ambiguous sub-target
+# prefix" message naming the candidates:
+deploy bbsengine6.www  # ERROR: matches both wwworg and wwwcom
 ```
 
 ### Sub-target semantics

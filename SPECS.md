@@ -343,7 +343,7 @@ target." Project records in `TARGETS` look like:
 ```
 
 Bare-base invocation semantics (see `lib.resolve` lines
-`lib.py:217-308`):
+`lib.py:274-356`):
 
 - `deploy proj.tui` (or any explicit sub) — pins that sub. No
   transitive deps unless `--with-deps` is set (see §2.2).
@@ -355,6 +355,70 @@ Bare-base invocation semantics (see `lib.resolve` lines
   → `getdate_next.tui`).
 - `deploy proj` (bare, no `TARGETS[proj]` entry) — runs the bare
   `make deploy` target; nothing to choose.
+
+### 4.1 Shortest-unique-prefix sub matching
+
+The sub string on the command line does not need to be the full
+sub name; the resolver (`lib.resolve_sub_prefix`,
+`lib.py:149-184`) accepts the shortest unique prefix within the
+project's own `TARGETS` list:
+
+- **Exact match wins.** When `sub` is a member of `TARGETS[base]`
+  the resolver returns it verbatim. Every historical sub name
+  (`tui`, `wwworg`, `handbook`, `prod`, ...) is preserved.
+- **Unique prefix.** When exactly one entry in `TARGETS[base]`
+  starts with `sub`, the resolver returns that entry.
+- **Ambiguous prefix.** When more than one entry starts with
+  `sub`, the resolver exits `1` with a distinct
+  "ambiguous sub-target prefix" error message that names the
+  candidate subs (so the caller knows the sub string matched too
+  much, rather than nothing).
+- **No match.** When zero entries start with `sub`, the resolver
+  exits `1` with the existing "unknown sub-target" error message
+  (verbatim).
+
+Match rules:
+
+- **Case-sensitive** — `HAND` does not match `handbook`. Current
+  code is strictly lowercase across `TARGETS`, `DEPENDENCIES`,
+  and `MAKE_TARGET_ALIASES`; this matches that convention.
+- **Prefix-anchored** — `www` matches `wwworg`/`wwwcom` but
+  `org` does not match `wwworg` (no substring matching).
+- **Per-base scoped** — the prefix scan runs against
+  `TARGETS[base]` only. A prefix that resolves in one project's
+  `TARGETS` does not leak into another project whose `TARGETS`
+  happen to also contain an entry starting with that prefix.
+
+This is **not** a fuzzy match — typos like `hanbook` still error
+as unknown sub-targets. The feature is purely "type less when
+the prefix is unambiguous within the project."
+
+Concrete examples (using the current `TARGETS` at
+`lib.py:121-134`):
+
+| Input                    | Resolves to                      |
+| ------------------------ | -------------------------------- |
+| `bbsengine6.handbook`    | `bbsengine6.handbook` (exact)    |
+| `bbsengine6.hand`        | `bbsengine6.handbook`            |
+| `bbsengine6.h`           | `bbsengine6.handbook`            |
+| `bbsengine6.wwworg`      | `bbsengine6.wwworg` (exact)      |
+| `bbsengine6.wwwco`       | `bbsengine6.wwwcom`              |
+| `bbsengine6.www`         | ERROR — ambiguous (`wwworg`, `wwwcom`) |
+| `bbsengine6.x`           | ERROR — unknown sub-target       |
+| `zoid6.p` / `bed.p` / `mistermcfeely.p` | `<base>.prod`         |
+
+The `prod` opt-in semantics are preserved: a prefix-resolved
+`prod` (e.g. `zoid6.p`) is user-named (not auto-expanded), so it
+remains in the deploy chain past the `prod` drop guard at
+`lib.py:378`. This is verified by
+`test_deploy_sub_prefix.py::test_resolve_prefix_marks_sub_as_explicit`.
+
+Regression guard: `test_deploy_sub_prefix.py` (24 tests) covers
+exact-wins, unique-prefix, one-char prefix, ambiguous-prefix
+error, unknown-sub error preserved verbatim, case-sensitivity,
+prefix-anchoring (not substring), per-base isolation across
+projects, `prod` opt-in preservation through the drop guard, and
+mixed-prefix/full-name subs in one command line.
 
 Sub names are user-facing. The actual `make` target name may differ —
 see §5.

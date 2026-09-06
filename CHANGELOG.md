@@ -7,6 +7,29 @@ releases bump the patch). Dates are the day the commit landed on
 
 ## [Unreleased]
 
+### Added
+- **Shortest-unique-prefix sub matching.** The sub string on the
+  command line no longer needs to be the full sub name. The
+  resolver accepts the shortest unique prefix within the
+  project's own `TARGETS` list. `deploy bbsengine6.h`,
+  `deploy bbsengine6.hand`, and `deploy bbsengine6.handbook`
+  all resolve to `bbsengine6.handbook`. `deploy zoid6.p` (or
+  `bed.p` / `mistermcfeely.p`) resolves to `<base>.prod`. Match
+  is case-sensitive, prefix-anchored (not substring), and
+  per-base scoped (a prefix that resolves in one project's
+  `TARGETS` does not leak into another). Implementation lives in
+  `lib.resolve_sub_prefix` (`src/deploytool/lib.py:149-184`); see
+  `SPECS.md §4.1` for the full contract. Regression guard:
+  `tests/test_deploy_sub_prefix.py` (24 tests).
+- **Ambiguous-prefix error class.** When a sub prefix matches
+  more than one entry in `TARGETS[base]` (e.g. `bbsengine6.www`
+  matches both `wwworg` and `wwwcom`), the resolver exits `1`
+  with a distinct "ambiguous sub-target prefix" message that
+  names the candidate subs. The existing "unknown sub-target"
+  message is preserved verbatim for zero-match errors (e.g.
+  `bbsengine6.x`). The two error classes are intentionally
+  distinct so a typo surfaces as unknown, not ambiguous.
+
 ### Changed
 - `mistermcfeely` no longer installs into `/var/lib/zoid6/venv`.
   Both `deploy mistermcfeely.tui` and `deploy mistermcfeely.prod`
