@@ -140,16 +140,79 @@ def test_empty_string_is_not_a_prefix():
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_bbsengine6_hand_prefix():
-    """`deploy bbsengine6.hand` -> [('bbsengine6', 'handbook')]."""
-    order = deploytool.lib.resolve(["bbsengine6.hand"], with_deps=False)
+def test_resolve_bbsengine6_hand_prefix_is_now_ambiguous(monkeypatch):
+    """`deploy bbsengine6.hand` is now ambiguous (matches handbook and handbook-prod).
+
+    Pre-handbook-prod this resolved uniquely to handbook. Adding
+    handbook-prod to TARGETS broke that: both subs start with `hand`,
+    so the prefix scan returns two matches and the resolver exits 1
+    with the ambiguous-prefix message. Operators must name the sub
+    in full (`bbsengine6.handbook` or `bbsengine6.handbook-prod`).
+    """
+    msgs = []
+    monkeypatch.setattr(
+        deploytool.lib.io,
+        "echo",
+        lambda text, *a, **kw: msgs.append(text),
+    )
+
+    def fake_exit(rc=0):
+        raise SystemExit(rc)
+
+    monkeypatch.setattr(deploytool.lib.sys, "exit", fake_exit)
+    with pytest.raises(SystemExit) as excinfo:
+        deploytool.lib.resolve(["bbsengine6.hand"], with_deps=False)
+    assert excinfo.value.code == 1
+    out = "\n".join(msgs)
+    assert "ambiguous" in out, (
+        "bbsengine6.hand must now hit the ambiguous-prefix path; "
+        f"got: {out}"
+    )
+    assert "handbook" in out and "handbook-prod" in out
+
+
+def test_resolve_bbsengine6_h_prefix_is_now_ambiguous(monkeypatch):
+    """`deploy bbsengine6.h` is now ambiguous.
+
+    Same reasoning as test_resolve_bbsengine6_hand_prefix_is_now_ambiguous.
+    The literal `h` prefix that used to uniquely resolve to handbook
+    now matches both handbook and handbook-prod, so the resolver
+    emits the ambiguous-prefix error.
+    """
+    msgs = []
+    monkeypatch.setattr(
+        deploytool.lib.io,
+        "echo",
+        lambda text, *a, **kw: msgs.append(text),
+    )
+
+    def fake_exit(rc=0):
+        raise SystemExit(rc)
+
+    monkeypatch.setattr(deploytool.lib.sys, "exit", fake_exit)
+    with pytest.raises(SystemExit) as excinfo:
+        deploytool.lib.resolve(["bbsengine6.h"], with_deps=False)
+    assert excinfo.value.code == 1
+    out = "\n".join(msgs)
+    assert "ambiguous" in out
+    assert "handbook" in out and "handbook-prod" in out
+
+
+def test_resolve_bbsengine6_handbook_full_name_still_works():
+    """`bbsengine6.handbook` (full sub name) still resolves to handbook.
+
+    Companion to test_resolve_bbsengine6_hand_prefix_is_now_ambiguous:
+    prefix matching is now ambiguous, but the canonical sub names
+    still resolve 1:1 via the exact-match path in resolve_sub_prefix.
+    """
+    order = deploytool.lib.resolve(["bbsengine6.handbook"], with_deps=False)
     assert order == [("bbsengine6", "handbook")]
 
 
-def test_resolve_bbsengine6_h_prefix():
-    """The literal example from the change request: `h` -> handbook."""
-    order = deploytool.lib.resolve(["bbsengine6.h"], with_deps=False)
-    assert order == [("bbsengine6", "handbook")]
+def test_resolve_bbsengine6_handbook_prod_full_name_works():
+    """`bbsengine6.handbook-prod` resolves to the merlin-push umbrella."""
+    order = deploytool.lib.resolve(["bbsengine6.handbook-prod"], with_deps=False)
+    assert order == [("bbsengine6", "handbook-prod")]
 
 
 def test_resolve_bbsengine6_wwwco_prefix_distinguishes_wwworg_from_wwwcom():
@@ -318,10 +381,15 @@ def test_resolve_prefix_does_not_match_a_base_only_sub():
 def test_resolve_multiple_prefix_subs_in_one_command():
     """Caller can mix prefix-resolved subs with full-name subs.
 
-    `deploy bbsengine6.h bbsengine6.wwwco` -> handbook, wwwcom.
+    `deploy bbsengine6.handbook bbsengine6.wwwco` -> handbook, wwwcom.
+
+    (Originally used `bbsengine6.h` to resolve to handbook, but
+    adding handbook-prod to TARGETS made `h` an ambiguous prefix.
+    The full sub name still resolves 1:1, so the test uses the
+    canonical name now.)
     """
     order = deploytool.lib.resolve(
-        ["bbsengine6.h", "bbsengine6.wwwco"],
+        ["bbsengine6.handbook", "bbsengine6.wwwco"],
         with_deps=False,
     )
     assert order == [("bbsengine6", "handbook"), ("bbsengine6", "wwwcom")]

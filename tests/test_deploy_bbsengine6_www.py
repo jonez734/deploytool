@@ -43,21 +43,30 @@ import deploytool.lib
 # ---------------------------------------------------------------------------
 
 
-def test_bbsengine6_targets_has_four_subs():
-    """bbsengine6 must expose exactly tui, wwworg, wwwcom, handbook.
+def test_bbsengine6_targets_has_five_subs():
+    """bbsengine6 must expose exactly tui, wwworg, wwwcom, handbook,
+    handbook-prod.
 
     A single-sub TARGETS would let bare `deploy bbsengine6` auto-pick,
     defeating the operator's intent to be forced to name a sub.
-    A two- or three-sub TARGETS would silently drop one of the four
-    sub-targets (the handbook, or one of the website deploys).
+    A two- or three-sub TARGETS would silently drop one of the five
+    sub-targets (the handbook, the merlin-push umbrella, or one of
+    the website deploys).
+
+    `handbook` runs the local-stage target (`make handbook-prod`),
+    while `handbook-prod` runs the merlin-push umbrella
+    (`make deploy-handbook-prod` = php-deploy-prod + wwworg +
+    handbook-deploy-prod). Both are reachable so operators can
+    stage locally without pushing, or push the full stack in one
+    chain.
     """
     targets = deploytool.lib.get_targets("bbsengine6")
-    assert targets == ["tui", "wwworg", "wwwcom", "handbook"], (
-        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'handbook']; "
+    assert targets == ["tui", "wwworg", "wwwcom", "handbook", "handbook-prod"], (
+        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'handbook', 'handbook-prod']; "
         f"got {targets!r}. Bare `deploy bbsengine6` must stay ambiguous "
         "(warn + exit 1) so the operator names a sub explicitly, and both "
-        "website deploys (bbsengine.org, bbsengine.com) plus the handbook "
-        "must remain reachable."
+        "website deploys (bbsengine.org, bbsengine.com), the handbook stage, "
+        "and the merlin-push handbook-prod umbrella must remain reachable."
     )
 
 
@@ -103,13 +112,14 @@ def test_bare_bbsengine6_is_ambiguous(monkeypatch):
     assert "wwworg" in out, "resolver must list wwworg in the available subs"
     assert "wwwcom" in out, "resolver must list wwwcom in the available subs"
     assert "handbook" in out, "resolver must list handbook in the available subs"
+    assert "handbook-prod" in out, "resolver must list handbook-prod in the available subs"
 
 
 def test_bare_bbsengine6_under_with_deps_is_also_ambiguous(monkeypatch):
     """`deploy --with-deps bbsengine6` (bare) is still ambiguous.
 
     `--with-deps` only controls dep walking, not sub expansion.
-    Three-sub TARGETS still trips the ambiguity gate.
+    Five-sub TARGETS still trips the ambiguity gate.
     """
     msgs = []
     monkeypatch.setattr(
@@ -287,6 +297,78 @@ def test_handbook_prod_does_not_chain_into_www_org():
         "handbook-prod must not chain into '$(MAKE) -C www org' — "
         "that recipe ends with an ssh rsync to merlin. Use "
         "deploy bbsengine6.wwworg for the production push."
+    )
+
+
+def test_handbook_prod_sub_resolves_explicitly():
+    """`deploy bbsengine6.handbook-prod` -> [('bbsengine6', 'handbook-prod')].
+
+    Mirror of test_explicit_handbook_resolves_to_single_handbook_entry
+    for the merlin-push umbrella sub. The handbook-prod sub has no
+    `DEPENDENCIES` entry, so the chain is a single tuple regardless
+    of with_deps.
+    """
+    order = deploytool.lib.resolve(["bbsengine6.handbook-prod"], with_deps=False)
+    assert order == [("bbsengine6", "handbook-prod")]
+
+
+def test_handbook_prod_under_with_deps_still_single_entry():
+    """`deploy --with-deps bbsengine6.handbook-prod` is a single-entry chain."""
+    order = deploytool.lib.resolve(["bbsengine6.handbook-prod"], with_deps=True)
+    assert order == [("bbsengine6", "handbook-prod")]
+
+
+def test_handbook_prod_make_target_is_deploy_handbook_prod():
+    """run_make_deploy must construct 'deploy-handbook-prod' for handbook-prod.
+
+    Mirror of test_handbook_make_target_is_deploy_handbook for the
+    merlin-push umbrella. The sub has no MAKE_TARGET_ALIASES entry,
+    so the constructed target is `deploy-handbook-prod` verbatim.
+    """
+    project = "bbsengine6"
+    sub = "handbook-prod"
+    sub = deploytool.lib.MAKE_TARGET_ALIASES.get((project, sub), sub)
+    target = f"deploy-{sub}" if sub else "deploy"
+    assert target == "deploy-handbook-prod"
+
+
+def test_bbsengine6_makefile_defines_deploy_handbook_prod_target():
+    """bbsengine6/Makefile must define a deploy-handbook-prod target.
+
+    Mirrors deploytool's "make target must exist" contract: if a
+    TARGETS sub exists but no corresponding make rule, deploytool
+    silently does the wrong thing (make fails with 'No rule to make
+    target deploy-handbook-prod' but the deploy itself exits 0
+    because the subprocess was caught). Guarding here means a
+    regression surfaces in CI, not in production.
+    """
+    from pathlib import Path
+
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    assert makefile.is_file(), f"{makefile} not found"
+    text = makefile.read_text()
+    assert "deploy-handbook-prod:" in text, (
+        f"bbsengine6/Makefile must define a deploy-handbook-prod target. Got:\n{text}"
+    )
+
+
+def test_bbsengine6_makefile_defines_handbook_deploy_prod_target():
+    """deploy-handbook-prod must chain into the rsync step handbook-deploy-prod.
+
+    Structural guard: the umbrella's value is that it pushes the
+    staged handbook tree to merlin via ssh. Without
+    handbook-deploy-prod (the rsync step itself), the umbrella
+    silently no-ops on the merlin push and only stages locally.
+    """
+    from pathlib import Path
+    import re
+
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    text = makefile.read_text()
+    assert re.search(r"^handbook-deploy-prod:", text, re.MULTILINE), (
+        "bbsengine6/Makefile must define a `handbook-deploy-prod:` target "
+        "(rsync $(WWWSTAGE)html/handbook/$(VERSION)/ -> $(WWWPROD)...) "
+        "that deploy-handbook-prod chains through."
     )
 
 
