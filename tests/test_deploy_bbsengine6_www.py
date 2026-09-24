@@ -1,33 +1,47 @@
-"""Tests for bbsengine6's website sub-targets (wwworg + wwwcom)
-and the handbook sub-target.
+"""Tests for bbsengine6's website sub-targets (wwworg + wwwcom),
+the handbook sub-target, and the stage/prod split that surfaces
+the engine entry-point install on the zoidtechnologies.com vhost.
 
-bbsengine6 exposes four subs under deploytool:
+bbsengine6 exposes seven subs under deploytool:
 
-  - `bbsengine6.tui`      — Python wheel build + venv install
-                           (via `deploy-tui`).
-  - `bbsengine6.wwworg`   — stage + rsync the bbsengine.org website
-                           (`bbsengine6/www/org`). Driven by the
-                           `deploy-wwworg` wrapper in
-                           `bbsengine6/Makefile`.
-  - `bbsengine6.wwwcom`   — stage + rsync the bbsengine.com website
-                           (`bbsengine6/www/com`). Driven by the
-                           `deploy-wwwcom` wrapper.
-  - `bbsengine6.handbook` — stage the handbook tree and ship the
-                           blurb/markdown-rendered handler for
-                           `https://bbsengine.org/handbook/<v>/<path>`.
-                           Driven by the `deploy-handbook` wrapper.
+  - `bbsengine6.tui`         — Python wheel build + venv install
+                              (via `deploy-tui`).
+  - `bbsengine6.wwworg`      — stage + rsync the bbsengine.org website
+                              (`bbsengine6/www/org`). Driven by the
+                              `deploy-wwworg` wrapper in
+                              `bbsengine6/Makefile`.
+  - `bbsengine6.wwwcom`      — stage + rsync the bbsengine.com website
+                              (`bbsengine6/www/com`). Driven by the
+                              `deploy-wwwcom` wrapper.
+  - `bbsengine6.handbook`    — stage the handbook tree and ship the
+                              blurb/markdown-rendered handler for
+                              `https://bbsengine.org/handbook/<v>/<path>`.
+                              Driven by the `deploy-handbook` wrapper.
+  - `bbsengine6.handbook-prod` — merlin-push umbrella for the handbook
+                              stack (php-deploy-prod + wwworg +
+                              handbook-deploy-prod). Driven by
+                              `deploy-handbook-prod`.
+  - `bbsengine6.engine-stage` — local stage of `bbsengine6/engine/*.php`
+                              onto `/srv/www/vhosts/zoidtechnologies.com/html/engine/`.
+                              Driven by `deploy-engine-stage`. Detailed
+                              tests live in `test_deploy_bbsengine6_engine.py`.
+  - `bbsengine6.engine-prod`  — merlin-push of the staged engine onto
+                              the zoidtechnologies.com vhost. Driven
+                              by `deploy-engine-prod`. Detailed tests
+                              live in `test_deploy_bbsengine6_engine.py`.
 
-These subs are the two website deploys (`bbsengine.org`,
-`bbsengine.com`) that historically lived behind the legacy
-`bbsengine6.www` sub (which actually deployed the engine library,
-not the websites), plus the handbook. The legacy `www` sub is
-removed: bare `deploy bbsengine6` now lists the four current subs
-and exits 1, and a caller using the legacy `bbsengine6.www` gets
-an "unknown sub-target" error naming the new ones.
+The website deploys (`bbsengine.org`, `bbsengine.com`) historically
+lived behind the legacy `bbsengine6.www` sub (which actually
+deployed the engine library, not the websites). The legacy `www`
+sub is removed: bare `deploy bbsengine6` now lists the seven
+current subs and exits 1, and a caller using the legacy
+`bbsengine6.www` gets an "unknown sub-target" error naming the
+new ones.
 
 These tests are the deploy-side counterpart to the bbsengine6
 Makefile changes that introduced `deploy-wwworg` /
-`deploy-wwwcom` / `deploy-handbook`. They guard against
+`deploy-wwwcom` / `deploy-handbook` / `deploy-handbook-prod` /
+`deploy-engine-stage` / `deploy-engine-prod`. They guard against
 regressions where someone removes one of the subs (silently
 reverting to a smaller TARGETS) or breaks the make-rule wiring
 on the bbsengine6 side.
@@ -43,15 +57,15 @@ import deploytool.lib
 # ---------------------------------------------------------------------------
 
 
-def test_bbsengine6_targets_has_five_subs():
+def test_bbsengine6_targets_has_seven_subs():
     """bbsengine6 must expose exactly tui, wwworg, wwwcom, handbook,
-    handbook-prod.
+    handbook-prod, engine-stage, engine-prod.
 
     A single-sub TARGETS would let bare `deploy bbsengine6` auto-pick,
     defeating the operator's intent to be forced to name a sub.
-    A two- or three-sub TARGETS would silently drop one of the five
-    sub-targets (the handbook, the merlin-push umbrella, or one of
-    the website deploys).
+    A two- or three-sub TARGETS would silently drop one of the seven
+    sub-targets (the handbook, the merlin-push umbrella, one of the
+    website deploys, or one of the engine stage/prod pairs).
 
     `handbook` runs the local-stage target (`make handbook-prod`),
     while `handbook-prod` runs the merlin-push umbrella
@@ -59,14 +73,20 @@ def test_bbsengine6_targets_has_five_subs():
     handbook-deploy-prod). Both are reachable so operators can
     stage locally without pushing, or push the full stack in one
     chain.
+
+    `engine-stage` and `engine-prod` (covered in detail by
+    `test_deploy_bbsengine6_engine.py`) split the engine entry-point
+    PHP install onto the zoidtechnologies.com vhost into a local
+    stage step and a merlin-push prod step.
     """
     targets = deploytool.lib.get_targets("bbsengine6")
-    assert targets == ["tui", "wwworg", "wwwcom", "handbook", "handbook-prod"], (
-        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'handbook', 'handbook-prod']; "
+    assert targets == ["tui", "wwworg", "wwwcom", "handbook", "handbook-prod", "engine-stage", "engine-prod"], (
+        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'handbook', 'handbook-prod', 'engine-stage', 'engine-prod']; "
         f"got {targets!r}. Bare `deploy bbsengine6` must stay ambiguous "
-        "(warn + exit 1) so the operator names a sub explicitly, and both "
-        "website deploys (bbsengine.org, bbsengine.com), the handbook stage, "
-        "and the merlin-push handbook-prod umbrella must remain reachable."
+        "(warn + exit 1) so the operator names a sub explicitly, and all "
+        "seven sub-targets (the two website deploys, the handbook stage, "
+        "the merlin-push handbook-prod umbrella, and the engine "
+        "stage/prod pair) must remain reachable."
     )
 
 
@@ -90,7 +110,7 @@ def test_bbsengine6_targets_does_not_contain_legacy_www():
 
 
 def test_bare_bbsengine6_is_ambiguous(monkeypatch):
-    """`deploy bbsengine6` (bare) lists all four subs and exits 1."""
+    """`deploy bbsengine6` (bare) lists all seven subs and exits 1."""
     msgs = []
     monkeypatch.setattr(
         deploytool.lib.io,
@@ -113,13 +133,15 @@ def test_bare_bbsengine6_is_ambiguous(monkeypatch):
     assert "wwwcom" in out, "resolver must list wwwcom in the available subs"
     assert "handbook" in out, "resolver must list handbook in the available subs"
     assert "handbook-prod" in out, "resolver must list handbook-prod in the available subs"
+    assert "engine-stage" in out, "resolver must list engine-stage in the available subs"
+    assert "engine-prod" in out, "resolver must list engine-prod in the available subs"
 
 
 def test_bare_bbsengine6_under_with_deps_is_also_ambiguous(monkeypatch):
     """`deploy --with-deps bbsengine6` (bare) is still ambiguous.
 
     `--with-deps` only controls dep walking, not sub expansion.
-    Five-sub TARGETS still trips the ambiguity gate.
+    Seven-sub TARGETS still trips the ambiguity gate.
     """
     msgs = []
     monkeypatch.setattr(

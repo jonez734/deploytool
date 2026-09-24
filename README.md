@@ -93,6 +93,14 @@ deploy mistermcfeely
 deploy bbsengine6.wwworg
 deploy bbsengine6.wwwcom
 
+# bbsengine6 engine entry-point deploys (zoidtechnologies.com vhost):
+# stage/prod split. Engine-stage is local rsync only;
+# engine-prod runs the engine-deploy-prod umbrella (stage + merlin push).
+deploy bbsengine6.engine-stage    # local: -> /srv/www/vhosts/zoidtechnologies.com/html/engine/
+deploy bbsengine6.engine-prod     # merlin push of staged engine
+deploy bbsengine6.engine-s        # same as engine-stage (unique prefix)
+deploy bbsengine6.engine-p        # same as engine-prod (unique prefix)
+
 # sub prefix matching: the shortest unique prefix within a project's
 # own TARGETS list is accepted. These three are equivalent:
 deploy bbsengine6.handbook
@@ -173,11 +181,15 @@ deploys:
   bed.tui → `deploy-venv` resolution; bbsengine6.tui conditional dep.
 - `test_deploy_getdate_next_tui.py` — `PREPARE_BUILD` invariants
   (foreign-owned `build/` chmod EPERM; `chmod 1775` not `chmod g-s`).
-- `test_deploy_bbsengine6_www.py` — three-sub TARGETS shape for
-  `bbsengine6` (`tui`, `wwworg`, `wwwcom`); legacy `www` removed;
+- `test_deploy_bbsengine6_www.py` — five- (now seven-) sub TARGETS shape for
+  `bbsengine6` (`tui`, `wwworg`, `wwwcom`, `handbook`, `handbook-prod`,
+  `engine-stage`, `engine-prod`); legacy `www` removed;
   bare-base ambiguity; explicit-sub resolution; make-rule wiring
   for `deploy-wwworg` / `deploy-wwwcom` and their `wwworg:` /
-  `wwwcom:` delegates in `bbsengine6/Makefile`.
+  `wwwcom:` delegates in `bbsengine6/Makefile`. The engine subs
+  get their own dedicated regression file (`test_deploy_bbsengine6_engine.py`)
+  covering stage/prod split, prefix matching, and the underlying
+  `bbsengine6/engine/Makefile` shape.
 - `test_deploy_with_deps.py` — `--with-deps` flag and bare-base
   ambiguity rules (multi-sub TARGETS lists subs and exits 1;
   single-sub TARGETS auto-picks; bare under `--with-deps` auto-

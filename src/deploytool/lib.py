@@ -36,7 +36,7 @@ PROJECT_DIRS = {
 DEPENDENCIES = {
     "getdate_next": [],
     "bbsengine6": [],
-    "zoid6": [],
+    "zoid6": [ "bbsengine6"],
     "teos": ["bbsengine6", "zoid6"],
     "murdermotel": ["bbsengine6", "zoid6"],
     "empyre": ["bbsengine6", "zoid6"],
@@ -128,7 +128,7 @@ TARGETS = {
     "deploytool": ["tui"],
     "zoidoffice": ["tui", "www"],
     "bed": ["tui", "venv", "prod"],
-    "bbsengine6": ["tui", "wwworg", "wwwcom", "handbook", "handbook-prod"],
+    "bbsengine6": ["tui", "wwworg", "wwwcom", "handbook", "handbook-prod", "engine-stage", "engine-prod"],
     "getdate_next": ["tui"],
     "mistermcfeely": ["tui", "prod"],
 }

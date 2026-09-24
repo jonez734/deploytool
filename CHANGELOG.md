@@ -8,6 +8,29 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Added
+- **bbsengine6 engine-stage / engine-prod sub-targets.** Operators can
+  now stage and prod-push the `bbsengine6/engine/*.php` entry-point
+  install onto the zoidtechnologies.com vhost without running the
+  full `bbsengine6` umbrella:
+    - `deploy bbsengine6.engine-stage` runs `make deploy-engine-stage`
+      → `make -C engine stage`, which rsyncs the PHP files locally to
+      `/srv/www/vhosts/zoidtechnologies.com/html/engine/`.
+    - `deploy bbsengine6.engine-prod` runs `make deploy-engine-prod`
+      → `make engine-deploy-prod` (the existing umbrella at
+      `bbsengine6/Makefile:220-221`) which calls `make -C engine
+      deploy` (stage + merlin push).
+  Both subs rely on the existing `?=` defaults at
+  `bbsengine6/Makefile:22-23` and `bbsengine6/engine/Makefile:2-3`;
+  no per-vhost overrides are needed for the zoidtechnologies.com
+  vhost. `engine-stage` / `engine-prod` are reachable via the unique
+  prefixes `engine-s` / `engine-p`; bare `engine` is ambiguous and
+  triggers the existing "ambiguous sub-target prefix" error.
+  Existing `bbsengine6.wwworg` (bbsengine.org vhost) is unchanged
+  and continues to handle its own vhost via inline `ENGINESTAGEDOCROOT`
+  overrides. The unconditional `DEPENDENCIES['teos'] = ['bbsengine6',
+  'zoid6']` link is unchanged — `deploy teos.www` still drives the
+  bare `bbsengine6` deploy umbrella as before. Regression guard:
+  `tests/test_deploy_bbsengine6_engine.py`.
 - **Shortest-unique-prefix sub matching.** The sub string on the
   command line no longer needs to be the full sub name. The
   resolver accepts the shortest unique prefix within the
