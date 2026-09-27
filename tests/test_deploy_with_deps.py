@@ -261,6 +261,93 @@ def test_with_deps_no_chain_when_none_exists():
 
 
 # ---------------------------------------------------------------------------
+# Conditional deps — `te.www` walks `("zoid6", "shared")` first
+# (https://github.com/jonez734/deploytool@2026-09-27)
+# ---------------------------------------------------------------------------
+
+
+def test_teos_www_with_deps_walks_zoid6_shared_first():
+    """`deploy --with-deps teos.www` runs zoid6.shared before teos.www.
+
+    teos renders through zoid6/shared/skin/tmpl/page.tmpl, so the
+    shared template must land on the target host before teos's
+    vhost config. Otherwise a curl probe after a single deploy can
+    see the new config but the old shared template (or vice versa).
+    The full chain also walks bbsengine6 (bare) and zoid6 (bare)
+    per DEPENDENCIES; the assertion pins the relative position of
+    zoid6.shared before teos.www.
+    """
+    order = deploytool.lib.resolve(["teos.www"], with_deps=True)
+    # bbsengine6 (bare) and zoid6 (bare) come first per
+    # DEPENDENCIES; zoid6.shared comes next per CONDITIONAL_DEPENDENCIES
+    # because teos.www is the requested sub; teos.www last.
+    assert ("zoid6", "shared") in order
+    assert ("teos", "www") in order
+    assert order.index(("zoid6", "shared")) < order.index(("teos", "www")), (
+        f"zoid6.shared must run before teos.www; got {order!r}"
+    )
+
+
+def test_teos_www_without_with_deps_does_not_walk_zoid6_shared():
+    """`deploy teos.www` (no --with-deps) does NOT auto-include zoid6.shared.
+
+    The CONDITIONAL_DEPENDENCIES entry is only consulted under
+    --with-deps. The bare `deploy teos.www` invocation stays a
+    single-step deploy so callers who don't want shared pushed
+    keep that opt-out.
+    """
+    order = deploytool.lib.resolve(["teos.www"], with_deps=False)
+    assert order == [("teos", "www")]
+
+
+def test_teos_tui_with_deps_does_not_walk_zoid6_shared():
+    """te.tui does not depend on zoid6.shared.
+
+    The TUI bundles its own chrome and renders Smarty templates
+    client-side, not through the shared/skin/tmpl/page.tmpl
+    hierarchy. Pulling in zoid6.shared for the TUI would be a
+    no-op deploy at best, and confusing at worst. (Bare deps
+    bbsengine6 and zoid6 still walk under --with-deps; the
+    assertion is that zoid6.shared specifically does NOT appear.)
+    """
+    order = deploytool.lib.resolve(["teos.tui"], with_deps=True)
+    assert ("zoid6", "shared") not in order, (
+        f"te.tui must not pull in zoid6.shared; got {order!r}"
+    )
+    assert order[-1] == ("teos", "tui")
+
+
+def test_zoid6_shared_subtarget_is_registered_and_resolves_to_canonical_name():
+    """`zoid6.shared` is a registered sub-target and resolves without ambiguity.
+
+    The resolver must accept `zoid6.shared` and produce a single
+    (zoid6, shared) entry. Short-prefix matching (e.g.
+    `zoid6.s`) must NOT match another sub in the zoid6 TARGETS
+    list, so `shared` is the canonical name.
+    """
+    targets = deploytool.lib.get_targets("zoid6")
+    assert "shared" in targets, "zoid6 must declare 'shared' as a deployable sub"
+    resolved = deploytool.lib.resolve(["zoid6.shared"], with_deps=False)
+    assert resolved == [("zoid6", "shared")]
+    # Short-prefix matching: only one zoid6 sub starts with "s"
+    # (the new 'shared' entry; www/tui/prod all start with other
+    # letters). Confirm `zoid6.s` resolves to `shared` and not
+    # any other sub.
+    resolved_short = deploytool.lib.resolve(["zoid6.s"], with_deps=False)
+    assert resolved_short == [("zoid6", "shared")]
+
+
+def test_zoid6_shared_make_target_aliases_to_bare_shared():
+    """`deploy zoid6.shared` runs `make -C zoid6 shared`, not `make deploy-shared`.
+
+    zoid6's Makefile declares the target as `shared:` (no
+    `deploy-` prefix). The MAKE_TARGET_ALIASES table maps the
+    user-facing sub name to the actual make target name.
+    """
+    assert deploytool.lib.MAKE_TARGET_ALIASES.get(("zoid6", "shared")) == "shared"
+
+
+# ---------------------------------------------------------------------------
 # Backwards-compat: default kwarg preserves old behavior for explicit subs
 # ---------------------------------------------------------------------------
 

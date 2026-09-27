@@ -116,10 +116,26 @@ CONDITIONAL_DEPENDENCIES = {
     "bed": {
         "tui": [("bbsengine6", "tui")],
     },
+    # @since 2026-09-27 — `deploy teos.www` must land zoid6's shared
+    # chrome (skin/tmpl/page.tmpl and friends) before teos's
+    # vhost config. Otherwise Smarty renders page.tmpl from
+    # zoid6's tree but the teos config's SHAREDPAGEMARKER define
+    # (and any other shared-page-fingerprint constants) land on
+    # merlin in the wrong order, producing a window where
+    # curl-grep on a freshly-deployed teos URL sees the new
+    # config but the old shared template -- masking whether the
+    # marker or the FA Kit fix is actually live. Walking
+    # ("zoid6", "shared") first ensures the topo order is
+    # correct. The dependency is conditional because teos.tui
+    # does NOT depend on the shared templates (the TUI deploys
+    # its own bundled chrome).
+    "teos": {
+        "www": [("zoid6", "shared")],
+    },
 }
 
 TARGETS = {
-    "zoid6": ["www", "tui", "prod"],
+    "zoid6": ["www", "tui", "prod", "shared"],
     "teos": ["www", "tui"],
     "achilles": ["www", "tui"],
     "casino": ["tui", "www"],
@@ -136,9 +152,18 @@ TARGETS = {
 # Sub-target -> actual make `deploy-*` target. Some sub-target names are
 # user-facing only and don't have a 1:1 `deploy-<sub>` make rule. Applied
 # by run_make_deploy() before constructing the make target name.
+#
+# ("zoid6", "shared") -> "shared" because zoid6's Makefile declares
+# the target as a plain `shared:` rule (not `deploy-shared:`). It
+# rsyncs zoid6's shared template directory (skin/tmpl/, css/, art/)
+# from STAGEDOCROOT to PRODDOCROOT on the target host. Other vhosts
+# that share chrome (te.os, achilles, empyre, etc.) depend on this
+# sub landing before they deploy their own vhost config; the
+# dependency is wired in CONDITIONAL_DEPENDENCIES below.
 MAKE_TARGET_ALIASES = {
     ("bed", "tui"): "venv",
     ("getdate_next", "tui"): "venv",
+    ("zoid6", "shared"): "shared",
 }
 
 
