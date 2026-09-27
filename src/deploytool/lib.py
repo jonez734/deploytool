@@ -149,17 +149,27 @@ TARGETS = {
     "mistermcfeely": ["tui", "prod"],
 }
 
-# Sub-target -> actual make `deploy-*` target. Some sub-target names are
-# user-facing only and don't have a 1:1 `deploy-<sub>` make rule. Applied
-# by run_make_deploy() before constructing the make target name.
+# Sub-target -> bare make target name. When a (project, sub) pair has
+# an entry here, `run_make_deploy()` invokes that make target verbatim
+# WITHOUT the usual `deploy-` prefix. Used for (project, sub) pairs
+# whose user-facing sub name does NOT match a `deploy-<sub>` make rule
+# in the project's Makefile.
 #
-# ("zoid6", "shared") -> "shared" because zoid6's Makefile declares
-# the target as a plain `shared:` rule (not `deploy-shared:`). It
-# rsyncs zoid6's shared template directory (skin/tmpl/, css/, art/)
-# from STAGEDOCROOT to PRODDOCROOT on the target host. Other vhosts
-# that share chrome (te.os, achilles, empyre, etc.) depend on this
-# sub landing before they deploy their own vhost config; the
-# dependency is wired in CONDITIONAL_DEPENDENCIES below.
+# ("bed", "tui") -> "venv" because bed's Makefile declares `deploy-venv`
+# (not `deploy-tui`); the `tui` sub is a Python venv install.
+# ("getdate_next", "tui") -> "venv" — same reason.
+# ("zoid6", "shared") -> "shared" because zoid6/Makefile declares the
+# target as a plain `shared:` rule (not `deploy-shared:`). It rsyncs
+# zoid6's shared template directory (skin/tmpl/, css/, art/) from
+# STAGEDOCROOT to PRODDOCROOT on the target host. Other vhosts that
+# share chrome (te.os, achilles, empyre, etc.) depend on this sub
+# landing before they deploy their own vhost config; the dependency is
+# wired in CONDITIONAL_DEPENDENCIES below.
+#
+# Applied in two places:
+#   - run_make_deploy() (lib.py:~525)  — picks the make target to run.
+#   - resolve() (lib.py:~460)         — used as a dedup key so two subs
+#     that resolve to the same make target don't run twice.
 MAKE_TARGET_ALIASES = {
     ("bed", "tui"): "venv",
     ("getdate_next", "tui"): "venv",
@@ -529,8 +539,16 @@ def run_make_deploy(args, project, sub=None):
     SystemExit propagate to the caller.
     """
     project_dir = f"{SOURCE_BASE}/{PROJECT_DIRS.get(project, project)}"
-    sub = MAKE_TARGET_ALIASES.get((project, sub), sub) if sub is not None else sub
-    target = f"deploy-{sub}" if sub else "deploy"
+    # When the (project, sub) pair has a MAKE_TARGET_ALIASES entry, the
+    # alias value is the bare make target name (e.g. zoid6's `shared` rule
+    # is a plain `shared:`, not `deploy-shared:`) — use it verbatim
+    # without the `deploy-` prefix. Otherwise fall back to the default
+    # `deploy-<sub>` shape.
+    if sub is not None and (project, sub) in MAKE_TARGET_ALIASES:
+        target = MAKE_TARGET_ALIASES[(project, sub)]
+    else:
+        sub = MAKE_TARGET_ALIASES.get((project, sub), sub) if sub is not None else sub
+        target = f"deploy-{sub}" if sub else "deploy"
     cmd = ["make", "-C", project_dir, target]
     label = f"{project}.{sub}" if sub else project
 
