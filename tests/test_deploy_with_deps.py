@@ -288,6 +288,31 @@ def test_teos_www_with_deps_walks_zoid6_shared_first():
     )
 
 
+def test_teos_www_with_deps_walks_teos_engine_before_teos_www():
+    """`deploy --with-deps teos.www` runs `("teos", "engine")` before `("teos", "www")`.
+
+    The `engine` sub (which delegates to bbsengine6's
+    engine-deploy-prod umbrella) re-stages and re-pushes the
+    zoidtechnologies.com/html/engine/ install — the entry-point PHP
+    files teos renders through. It must land before teos's own vhost
+    rsync so the engine install is fresh by the time teos.www ships
+    the surrounding vhost tree. Mirrors the test above (zoid6.shared
+    before teos.www) — both CONDITIONAL_DEPENDENCIES entries are
+    consulted under --with-deps.
+    """
+    order = deploytool.lib.resolve(["teos.www"], with_deps=True)
+    assert ("teos", "engine") in order, (
+        f"('teos', 'engine') must be in the teos.www --with-deps chain; "
+        f"got {order!r}. The CONDITIONAL_DEPENDENCIES['teos']['www'] entry "
+        f"is what pulls it in."
+    )
+    assert ("teos", "www") in order
+    assert order.index(("teos", "engine")) < order.index(("teos", "www")), (
+        f"('teos', 'engine') must run before ('teos', 'www'); got {order!r}. "
+        f"The engine install must land before teos's own vhost rsync."
+    )
+
+
 def test_teos_www_without_with_deps_does_not_walk_zoid6_shared():
     """`deploy teos.www` (no --with-deps) does NOT auto-include zoid6.shared.
 

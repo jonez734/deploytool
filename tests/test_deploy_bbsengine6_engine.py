@@ -43,6 +43,7 @@ removes the underlying `stage` / `deploy-engine` targets in
 `bbsengine6/engine/Makefile`.
 """
 
+import argparse
 import re
 from pathlib import Path
 
@@ -352,3 +353,194 @@ def test_engine_makefile_default_docroot_points_to_zoidtechnologies():
         "/srv/www/vhosts/zoidtechnologies.com/html/engine/ so the new "
         "engine-stage / engine-prod subs land on the right vhost."
     )
+
+
+# ---------------------------------------------------------------------------
+# ENGINE_DOCROOT env-var override (per-vhost /engine/ install)
+# ---------------------------------------------------------------------------
+
+
+def test_engine_makefile_honors_engine_docroot_env_var():
+    """bbsengine6/engine/Makefile must read ENGINE_DOCROOT as the new
+    default for ENGINESTAGEDOCROOT.
+
+    Two assertions pin the contract:
+
+      - `ENGINE_DOCROOT ?=` is declared (so unset env var falls through
+        to the zoidtechnologies.com default).
+      - `ENGINESTAGEDOCROOT ?= $(ENGINE_DOCROOT)` chains the existing
+        variable to the new one. Without this, callers who override
+        only ENGINE_DOCROOT still get the zoidtechnologies.com path
+        because the engine sub-make's `stage:` and `deploy:` rules read
+        `$(ENGINESTAGEDOCROOT)`, not `$(ENGINE_DOCROOT)` directly.
+    """
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "engine" / "Makefile"
+    text = makefile.read_text()
+    assert re.search(
+        r"^ENGINE_DOCROOT\s*\?=", text, re.MULTILINE
+    ), "bbsengine6/engine/Makefile must declare `ENGINE_DOCROOT ?=`."
+    assert re.search(
+        r"^ENGINESTAGEDOCROOT\s*\?=\s*\$\(ENGINE_DOCROOT\)", text, re.MULTILINE
+    ), (
+        "bbsengine6/engine/Makefile must chain `ENGINESTAGEDOCROOT ?= "
+        "$(ENGINE_DOCROOT)` so the env var override propagates to the "
+        "stage / deploy rules."
+    )
+
+
+def test_parent_makefile_honors_engine_docroot_env_var():
+    """bbsengine6/Makefile (parent) must also read ENGINE_DOCROOT and
+    export it, so recipes at this layer that consume $(ENGINESTAGEDOCROOT)
+    — `wwworg:`, `prod:`, the bare `deploy:` umbrella — inherit the
+    env-var override without each call site needing its own plumbing.
+    """
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    text = makefile.read_text()
+    assert re.search(
+        r"^export\s+ENGINE_DOCROOT\s*\?=", text, re.MULTILINE
+    ), "bbsengine6/Makefile must `export ENGINE_DOCROOT ?=` so sub-makes inherit it."
+    assert re.search(
+        r"^export\s+ENGINESTAGEDOCROOT\s*\?=\s*\$\(ENGINE_DOCROOT\)",
+        text,
+        re.MULTILINE,
+    ), (
+        "bbsengine6/Makefile must chain `export ENGINESTAGEDOCROOT ?= "
+        "$(ENGINE_DOCROOT)` so the env var override propagates to "
+        "recipes at the parent layer."
+    )
+
+
+def test_wwworg_inline_engine_docroot_override_still_wins():
+    """The existing `wwworg:` recipe's inline `ENGINESTAGEDOCROOT=...`
+    override at bbsengine6/Makefile:135-136 must still point at the
+    bbsengine.org vhost. Make's command-line > environment > file
+    precedence is what protects this — the env var ENGINE_DOCROOT only
+    takes effect when no inline override is present. This is a
+    regression guard for the existing wwworg recipe shape.
+    """
+    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
+    text = makefile.read_text()
+    assert "ENGINESTAGEDOCROOT=/srv/www/vhosts/www.bbsengine.org/html/engine/" in text, (
+        "bbsengine6/Makefile wwworg recipe must keep its inline "
+        "ENGINESTAGEDOCROOT override pointing at the bbsengine.org vhost."
+    )
+    assert "ENGINEPRODDOCROOT=$(ORGHOST):/srv/www/vhosts/www.bbsengine.org/html/engine/" in text, (
+        "bbsengine6/Makefile wwworg recipe must keep its inline "
+        "ENGINEPRODDOCROOT override pointing at the bbsengine.org vhost."
+    )
+
+
+# ---------------------------------------------------------------------------
+# run_make_deploy — ENGINE_DOCROOT env-var plumbing
+# ---------------------------------------------------------------------------
+
+
+def _make_args(projects, **overrides):
+    """Build a Namespace matching the shape lib.run_make_deploy reads.
+
+    Mirrors the helper in tests/test_deploy_upgrade.py so the
+    ENGINE_DOCROOT plumbing tests look identical to the existing
+    DEPLOY_EDITABLE / DEPLOY_WITH_DEPS / DEPLOY_UPGRADE patterns.
+    """
+    defaults = dict(
+        projects=projects,
+        host="merlin",
+        dry_run=False,
+        verify=False,
+        editable=False,
+        with_deps=False,
+        upgrade=True,
+    )
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+def _completed(returncode=0, stdout="", stderr=""):
+    import types
+
+    return types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def test_run_make_deploy_engine_docroot_set_in_environ_flows_to_subprocess_for_engine_stage(monkeypatch):
+    """When ENGINE_DOCROOT is in os.environ, run_make_deploy passes it
+    through to the make subprocess env for bbsengine6.engine-stage.
+
+    Mirrors the DEPLOY_EDITABLE / DEPLOY_WITH_DEPS / DEPLOY_UPGRADE
+    set-on-inherit contract. The ?= default in bbsengine6/engine/Makefile
+    resolves to the operator's value, redirecting the rsync to the
+    chosen vhost.
+    """
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env", {})
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    monkeypatch.delenv("ENGINE_DOCROOT", raising=False)
+    monkeypatch.setenv("ENGINE_DOCROOT", "/srv/www/vhosts/foo.example.com/html/engine/")
+
+    args = _make_args(["bbsengine6.engine-stage"])
+    assert deploytool.lib.run_make_deploy(args, "bbsengine6", "engine-stage") == 0
+
+    assert captured["env"].get("ENGINE_DOCROOT") == "/srv/www/vhosts/foo.example.com/html/engine/"
+    assert captured["cmd"][:3] == [
+        "make",
+        "-C",
+        f"{deploytool.lib.SOURCE_BASE}/bbsengine6",
+    ]
+    assert captured["cmd"][3] == "deploy-engine-stage"
+
+
+def test_run_make_deploy_engine_docroot_set_in_environ_flows_to_subprocess_for_engine_prod(monkeypatch):
+    """When ENGINE_DOCROOT is in os.environ, run_make_deploy passes it
+    through to the make subprocess env for bbsengine6.engine-prod as
+    well — so the stage and push land on the same vhost.
+    """
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env", {})
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    monkeypatch.delenv("ENGINE_DOCROOT", raising=False)
+    monkeypatch.setenv("ENGINE_DOCROOT", "/srv/www/vhosts/bar.example.com/html/engine/")
+
+    args = _make_args(["bbsengine6.engine-prod"])
+    assert deploytool.lib.run_make_deploy(args, "bbsengine6", "engine-prod") == 0
+
+    assert captured["env"].get("ENGINE_DOCROOT") == "/srv/www/vhosts/bar.example.com/html/engine/"
+    assert captured["cmd"][3] == "deploy-engine-prod"
+
+
+def test_run_make_deploy_engine_docroot_unset_does_not_set_env_var(monkeypatch):
+    """When ENGINE_DOCROOT is NOT in os.environ, run_make_deploy strips
+    it from the subprocess env. Mirrors the DEPLOY_EDITABLE /
+    DEPLOY_WITH_DEPS / DEPLOY_UPGRADE strip-on-inherit pattern so a
+    stale shell var can't silently redirect /engine/ to a wrong vhost.
+
+    Note: ENGINE_DOCROOT has no CLI flag (env var only, like the other
+    `DEPLOY_*` vars). There is no "strip on `--no-engine-docroot`"
+    branch because there is no flag to flip -- the only way to set
+    ENGINE_DOCROOT is to put it in the operator's shell env, and the
+    strip-on-inherit guard covers the case where the var was set in
+    some unrelated prior session and the current invocation does not
+    want it.
+    """
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs.get("env", {})
+        return _completed(returncode=0)
+
+    monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    monkeypatch.delenv("ENGINE_DOCROOT", raising=False)
+
+    args = _make_args(["bbsengine6.engine-stage"])
+    deploytool.lib.run_make_deploy(args, "bbsengine6", "engine-stage")
+
+    assert "ENGINE_DOCROOT" not in captured["env"]
+

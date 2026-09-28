@@ -130,13 +130,29 @@ CONDITIONAL_DEPENDENCIES = {
     # does NOT depend on the shared templates (the TUI deploys
     # its own bundled chrome).
     "teos": {
-        "www": [("zoid6", "shared")],
+        "www": [
+            ("zoid6", "shared"),
+            # @since 2026-09-27 — `deploy teos.www` must also land the
+            # bbsengine6 engine entry-points onto the zoidtechnologies.com
+            # vhost (the vhost teos lives under) before teos's own vhost
+            # rsync. The `("teos", "engine")` sub runs `make deploy-engine`
+            # in teos/Makefile, which delegates to `bbsengine6 engine-deploy-prod`
+            # (the existing stage+prod push umbrella at bbsengine6/Makefile:233-234
+            # -> bbsengine6/engine/Makefile:19-20). No standalone `bbsengine6.engine-stage`
+            # dep is needed because engine-deploy-prod runs the stage rule
+            # internally. ENGINE_DOCROOT env var flows through the same plumbing
+            # used by bbsengine6.engine-stage / bbsengine6.engine-prod; see
+            # run_make_deploy below. Wired in the "www" sub only — teos.tui
+            # does NOT need the engine install (the TUI doesn't render
+            # engine-rendered templates).
+            ("teos", "engine"),
+        ],
     },
 }
 
 TARGETS = {
     "zoid6": ["www", "tui", "prod", "shared"],
-    "teos": ["www", "tui"],
+    "teos": ["www", "tui", "engine"],
     "achilles": ["www", "tui"],
     "casino": ["tui", "www"],
     "article2": ["www", "tui"],
@@ -586,6 +602,23 @@ def run_make_deploy(args, project, sub=None):
         env["DEPLOY_WITH_DEPS"] = "1"
     else:
         env.pop("DEPLOY_WITH_DEPS", None)
+
+    # ENGINE_DOCROOT plumbing: per-vhost /engine/ install override for
+    # bbsengine6.engine-stage / bbsengine6.engine-prod / teos.engine. The
+    # operator passes ENGINE_DOCROOT=... in their shell; deploytool reads
+    # it from os.environ and exports to the make subprocess so the ?=
+    # defaults in bbsengine6/Makefile (parent, exported to sub-makes) and
+    # bbsengine6/engine/Makefile (sub-make) resolve to the operator's path
+    # instead of the zoidtechnologies.com default. Set/strip semantics
+    # mirror DEPLOY_EDITABLE: set when the operator passes the var, strip
+    # when unset so a stale shell var can't silently redirect /engine/ to
+    # the wrong vhost. No-op for any (project, sub) that doesn't read it
+    # (other subs ignore the env var). No CLI flag — env var only, matching
+    # the existing DEPLOY_* plumbing contract.
+    if "ENGINE_DOCROOT" in os.environ:
+        env["ENGINE_DOCROOT"] = os.environ["ENGINE_DOCROOT"]
+    else:
+        env.pop("ENGINE_DOCROOT", None)
 
     dry_run = getattr(args, "dry_run", False)
     if dry_run:

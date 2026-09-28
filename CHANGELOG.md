@@ -8,6 +8,41 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Added
+- **`bbsengine6` engine-stage / engine-prod accept `ENGINE_DOCROOT` env var.**
+  Operators can now stage and prod-push the engine entry-point PHP install
+  onto a non-default vhost by passing `ENGINE_DOCROOT` in the make env:
+  ```
+  ENGINE_DOCROOT=/srv/www/vhosts/<vhost>/html/engine/ \
+    deploy bbsengine6.engine-stage
+  ENGINE_DOCROOT=/srv/www/vhosts/<vhost>/html/engine/ \
+    deploy bbsengine6.engine-prod
+  ```
+  Both subs honor the override (stage + push land on the same vhost). When
+  the env var is unset, the existing zoidtechnologies.com default applies —
+  no behavior change for current callers. Defense in depth: `ENGINE_DOCROOT`
+  is read by `?=` defaults in both `bbsengine6/Makefile:34-40` (parent,
+  `export`ed to sub-makes) and `bbsengine6/engine/Makefile:2-9` (sub-make);
+  inline `ENGINESTAGEDOCROOT=...` overrides still win, so the existing
+  `bbsengine6/Makefile:135-136` `wwworg` recipe is unchanged. Plumbing in
+  `src/deploytool/lib.py:run_make_deploy` (set/strip, mirroring the
+  existing `DEPLOY_EDITABLE` / `DEPLOY_WITH_DEPS` / `DEPLOY_UPGRADE`
+  contract). No CLI flag — env var only. Regression guards:
+  `tests/test_deploy_bbsengine6_engine.py` (env-var flow tests added in
+  this commit).
+- **`teos.engine` sub-target.** New sub on `TARGETS["teos"]` that wraps
+  the bbsengine6 engine stage+prod push into the teos.www chain. Driven
+  by `make -C ../bbsengine6 engine-deploy-prod` (the existing umbrella at
+  `bbsengine6/Makefile:233-234` which runs `make -C engine deploy` =
+  stage + merlin push) so the rsync logic has one canonical home. The
+  `ENGINE_DOCROOT` env var (above) flows through to the underlying
+  bbsengine6 invocation. Reachable as `deploy teos.engine` (or unique
+  prefix `deploy teos.e`); bare `deploy teos` was already ambiguous so
+  the new sub slots into the same resolver. Wired into `deploy --with-deps
+  teos.www` via `CONDITIONAL_DEPENDENCIES['teos']['www']` so the engine
+  entry-points land before teos's own vhost rsync. Regression guards:
+  `tests/test_deploy_teos_engine.py` (new file), and the extended
+  `test_teos_www_with_deps_walks_zoid6_shared_first` assertion in
+  `tests/test_deploy_with_deps.py`.
 - **bbsengine6 engine-stage / engine-prod sub-targets.** Operators can
   now stage and prod-push the `bbsengine6/engine/*.php` entry-point
   install onto the zoidtechnologies.com vhost without running the
