@@ -8,6 +8,61 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Added
+- **`bbsengine6.prod` sub-target.** New sub on `TARGETS["bbsengine6"]`
+  that runs the engine-library umbrella deploy (`bbsengine6/Makefile
+  deploy:` rule at line 286: `make -C engine stage` +
+  `make -C engine deploy-engine` + `make -C skin stage` +
+  `make php-deploy` + smarty rsync + `RSYNC_MAX_DELETE` precheck +
+  full umbrella push). The user-facing sub name is `prod`; the make
+  target stays the existing `deploy:` rule — the alias lives at
+  `MAKE_TARGET_ALIASES[("bbsengine6", "prod")] = "deploy"`,
+  following the same shape as `bed.tui -> venv` and
+  `zoid6.shared -> shared`. Slots into `TARGETS["bbsengine6"]`
+  between `wwwcom` and `handbook` so the two website deploys
+  (wwworg/wwwcom) lead the list. `deploy bbsengine6.prod` is
+  reachable via the unique prefix `deploy bbsengine6.p`; bare
+  `deploy bbsengine6` stays ambiguous (now lists the eight subs).
+  Replaces the legacy `bbsengine6.www` sub (removed 2025), which
+  mapped to the same umbrella rule but was confused with the
+  wwworg/wwwcom website deploys.
+- **`teos.prod` sub-target.** New sub on `TARGETS["teos"]` (slots
+  between `www` and `tui`) that aliases to the existing
+  `deploy-www:` rule at `teos/Makefile:30` (blurbs + `make -C www
+  prod` + rsync + `templates_c` chmod) via
+  `MAKE_TARGET_ALIASES[("teos", "prod")] = "deploy-www"`. Under
+  `--with-deps teos.prod` the new `CONDITIONAL_DEPENDENCIES['teos']['prod']`
+  entry walks `bbsengine6.prod -> zoid6.shared -> teos.engine ->
+  teos.prod` so the single command lands bbsengine6/{php,engine,skin,smarty}
+  + zoid6/shared + the engine entry-point install + the teos vhost
+  on merlin — i.e. the full teos stack. Mirrors the existing
+  `teos.www` chain shape; the two subs produce identical topo
+  orders under `--with-deps` and alias to the same make target.
+  The user-facing difference is intent: `www` says "deploy the
+  teos vhost"; `prod` says "deploy the whole teos stack". Today
+  they alias to the same make target; future evolution could
+  split them if teos gains a vhost-only deploy.
+- **`CONDITIONAL_DEPENDENCIES` chains updated to walk `bbsengine6.prod`
+  explicitly instead of relying on transitive bare-base `bbsengine6`.**
+  The `("bbsengine6", "www")` edges in `CONDITIONAL_DEPENDENCIES`
+  for `casino.www` and `article2.www` were invalid: bbsengine6 has
+  no `www` sub (removed 2025). The resolver emitted them anyway
+  because `visit()` doesn't validate transitive edges, so
+  `make -C bbsengine6 deploy-www` ran at deploy time and errored
+  with "No rule to make target deploy-www". The chains were
+  effectively broken; replacing with `("bbsengine6", "prod")`
+  fixes them. Same fix applied to `zoid6.www` (which used a
+  bare-string `"bbsengine6"` edge that worked by accident — the
+  resolver walked bare-base `bbsengine6` and emitted
+  `('bbsengine6', None)` which ran `make -C bbsengine6 deploy`).
+  And to `teos.www` (which now explicitly walks `("bbsengine6",
+  "prod")` instead of relying on `DEPENDENCIES['teos'] =
+  ['bbsengine6', 'zoid6']` walking bare-base `bbsengine6`). The
+  bare-base fallback still works (the resolver dedups `('bbsengine6',
+  None)` against the explicit `('bbsengine6', 'prod')` at line
+  469: `if sub is None and name in has_sub: continue`), so this
+  change is correctness-only — no chain regresses.
+
+### Changed
 - **`bbsengine6` engine-stage / engine-prod accept `ENGINE_DOCROOT` env var.**
   Operators can now stage and prod-push the engine entry-point PHP install
   onto a non-default vhost by passing `ENGINE_DOCROOT` in the make env:

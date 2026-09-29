@@ -99,16 +99,34 @@ VENV_LAYOUT = {
 # developer/CI use, but the deploy chain doesn't call it.
 CONDITIONAL_DEPENDENCIES = {
     "zoid6": {
-        "www": ["bbsengine6"],
+        # Updated 2026-09-29 — bare-string "bbsengine6" replaced by
+        # explicit ("bbsengine6", "prod"). The bare-string form relied
+        # on transitive bare-base bbsengine6 resolving to the umbrella
+        # `make -C bbsengine6 deploy` rule (which has no `deploy-` prefix
+        # and isn't exposed as a TARGETS sub). Now that bbsengine6.prod
+        # is a real sub with the umbrella alias, the explicit edge makes
+        # the chain self-documenting and removes the implicit dependency
+        # on DEPENDENCIES[zoid6]=["bbsengine6"] (kept for the bare-base
+        # case but unused here).
+        "www": [("bbsengine6", "prod")],
         "tui": [("bbsengine6", "tui"), ("bed", "tui")],
     },
     "casino": {
-        "www": [("bbsengine6", "www")],
+        # Updated 2026-09-29 — ("bbsengine6", "www") was an invalid edge:
+        # bbsengine6 has no "www" sub (the legacy www sub was removed in
+        # 2025 and replaced by wwworg/wwwcom). The resolver emitted it
+        # anyway because visit() doesn't validate transitive edges, so
+        # `make -C bbsengine6 deploy-www` ran at deploy time and errored
+        # with "No rule to make target deploy-www". The chain was
+        # effectively broken; replacing with ("bbsengine6", "prod") —
+        # the new umbrella sub — fixes it.
+        "www": [("bbsengine6", "prod")],
         "tui": [("bed", "tui")],
     },
     "article2": {
         "tui": [("bbsengine6", "tui")],
-        "www": [("bbsengine6", "www")],
+        # Same fix as casino.www above.
+        "www": [("bbsengine6", "prod")],
     },
     "deploytool": {
         "tui": [("bbsengine6", "tui")],
@@ -129,8 +147,18 @@ CONDITIONAL_DEPENDENCIES = {
     # correct. The dependency is conditional because teos.tui
     # does NOT depend on the shared templates (the TUI deploys
     # its own bundled chrome).
+    #
+    # Updated 2026-09-29 — ("bbsengine6", "prod") is now an explicit
+    # edge so the bbsengine6 engine-library install (php + engine +
+    # skin + smarty) lands before teos's vhost rsync, replacing the
+    # previous implicit reliance on DEPENDENCIES['teos']=['bbsengine6', ...]
+    # walking bare-base bbsengine6 (which silently emitted
+    # ('bbsengine6', None) and ran `make -C bbsengine6 deploy` —
+    # worked by accident, undocumented in the lib). Same edge applies
+    # to teos.prod below.
     "teos": {
         "www": [
+            ("bbsengine6", "prod"),
             ("zoid6", "shared"),
             # @since 2026-09-27 — `deploy teos.www` must also land the
             # bbsengine6 engine entry-points onto the zoidtechnologies.com
@@ -147,12 +175,38 @@ CONDITIONAL_DEPENDENCIES = {
             # engine-rendered templates).
             ("teos", "engine"),
         ],
+        # Added 2026-09-29 — `deploy teos.prod` is the single-command
+        # surface for "stage and install everything required for teos".
+        # Walks the same chain as teos.www (bbsengine6.prod →
+        # zoid6.shared → teos.engine → teos.prod) so the two subs
+        # produce identical topo orders under --with-deps. The user-
+        # facing difference is intent: `www` says "I want the teos vhost
+        # deployed"; `prod` says "I want the whole teos stack landed on
+        # merlin". Today they alias to the same make target (the
+        # `deploy-www:` rule at teos/Makefile:30); future evolution
+        # could split them if teos gains a vhost-only deploy.
+        "prod": [
+            ("bbsengine6", "prod"),
+            ("zoid6", "shared"),
+            ("teos", "engine"),
+        ],
     },
 }
 
 TARGETS = {
     "zoid6": ["www", "tui", "prod", "shared"],
-    "teos": ["www", "tui", "engine"],
+    # `prod` (added 2026-09-29) — the full teos stack. Aliased via
+    # MAKE_TARGET_ALIASES[("teos","prod")] = "deploy-www" so the
+    # user-facing sub name is `prod` while the make target stays
+    # the existing `deploy-www:` rule at teos/Makefile:30 (blurbs +
+    # `make -C www prod` + rsync + templates_c chmod). Under
+    # `--with-deps teos.prod` the CONDITIONAL_DEPENDENCIES['teos']['prod']
+    # entry walks bbsengine6.prod (engine library) + zoid6.shared
+    # (shared chrome) + teos.engine (engine install) before teos.prod,
+    # so the single command lands bbsengine6/{php,engine,skin,smarty}
+    # + zoid6/shared + teos/www. Slot between `www` and `tui` so the
+    # two prod-shaped deploys stay adjacent.
+    "teos": ["www", "prod", "tui", "engine"],
     "achilles": ["www", "tui"],
     "casino": ["tui", "www"],
     "article2": ["www", "tui"],
@@ -160,7 +214,20 @@ TARGETS = {
     "deploytool": ["tui"],
     "zoidoffice": ["tui", "www"],
     "bed": ["tui", "venv", "prod"],
-    "bbsengine6": ["tui", "wwworg", "wwwcom", "handbook", "handbook-prod", "engine-stage", "engine-prod"],
+    # `prod` (added 2026-09-29) — the engine-library umbrella
+    # (bbsengine6/Makefile `deploy:` rule at line 286: engine stage +
+    # engine deploy-engine + skin stage + php-deploy + smarty rsync,
+    # gated by the existing RSYNC_MAX_DELETE precheck). Aliased via
+    # MAKE_TARGET_ALIASES[("bbsengine6","prod")] = "deploy" so the
+    # user-facing sub name is `prod` while the make target stays
+    # the existing `deploy:` rule. Replaces the legacy `www` sub
+    # (removed 2025; that sub mapped to the same umbrella, but the
+    # name `www` was confusing next to wwworg/wwwcom — the website
+    # deploys — so the umbrella got renamed). `prod` slots between
+    # `wwwcom` and `handbook` to keep the two website subs first,
+    # then the engine-library deploy, then the handbook/engine-stage
+    # surface at the tail.
+    "bbsengine6": ["tui", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod"],
     "getdate_next": ["tui"],
     "mistermcfeely": ["tui", "prod"],
 }
@@ -190,6 +257,15 @@ MAKE_TARGET_ALIASES = {
     ("bed", "tui"): "venv",
     ("getdate_next", "tui"): "venv",
     ("zoid6", "shared"): "shared",
+    # Added 2026-09-29 — bbsengine6.prod and teos.prod are the
+    # user-facing names for the two umbrella deploys that don't
+    # follow the `deploy-<sub>` shape. bbsengine6.prod maps to the
+    # existing `deploy:` rule at bbsengine6/Makefile:286 (engine +
+    # skin + php + smarty stage+prod push); teos.prod maps to the
+    # existing `deploy-www:` rule at teos/Makefile:30 (blurbs + www
+    # prod + rsync + templates_c chmod).
+    ("bbsengine6", "prod"): "deploy",
+    ("teos", "prod"): "deploy-www",
 }
 
 
