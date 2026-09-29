@@ -190,12 +190,19 @@ def test_with_deps_explicit_casino_subs_walks_full_chain():
     The previous "auto-expand all subs under --with-deps" shortcut is
     gone; callers name the subs explicitly to get the full chain for
     each. Both subs' chains merge into one topo-sorted order.
+
+    casino.www's CONDITIONAL_DEPENDENCIES edge was previously
+    `("bbsengine6", "www")` — a legacy entry that emitted a
+    `('bbsengine6', 'www')` edge and silently tried to run
+    `make -C bbsengine6 deploy-www`, which doesn't exist (the `www`
+    sub was removed in 2025). The edge is now `("bbsengine6", "prod")`
+    so the chain lands the engine-library umbrella correctly.
     """
     order = deploytool.lib.resolve(
         ["casino.tui", "casino.www"], with_deps=True
     )
     assert order == [
-        ("bbsengine6", "www"),
+        ("bbsengine6", "prod"),
         ("bbsengine6", "tui"),
         ("bed", "tui"),
         ("casino", "tui"),
@@ -240,12 +247,20 @@ def test_with_deps_explicit_sub_walks_chain():
 
 
 def test_with_deps_explicit_subs_combined():
-    """`deploy --with-deps casino.tui casino.www` merges chains."""
+    """`deploy --with-deps casino.tui casino.www` merges chains.
+
+    casino.www's CONDITIONAL_DEPENDENCIES edge was previously
+    `("bbsengine6", "www")` (broken: the legacy `www` sub was
+    removed); now `("bbsengine6", "prod")` (the new engine-library
+    umbrella sub). See the comment on
+    `test_with_deps_explicit_casino_subs_walks_full_chain` for the
+    full rationale.
+    """
     order = deploytool.lib.resolve(
         ["casino.tui", "casino.www"], with_deps=True
     )
     assert order == [
-        ("bbsengine6", "www"),
+        ("bbsengine6", "prod"),
         ("bbsengine6", "tui"),
         ("bed", "tui"),
         ("casino", "tui"),
@@ -266,6 +281,39 @@ def test_with_deps_no_chain_when_none_exists():
 # ---------------------------------------------------------------------------
 
 
+def test_teos_www_with_deps_walks_bbsengine6_prod_first():
+    """`deploy --with-deps teos.www` runs bbsengine6.prod before teos.www.
+
+    The teos vhost rsync (the `deploy-www:` rule at teos/Makefile:30)
+    depends on bbsengine6's engine-library install — teos renders
+    through `bbsengine6/engine/*.php` (router.php, serve-md.php,
+    join.php, login.php, logout.php) plus bbsengine6's `php/` library
+    and `skin/tmpl/` chrome. The library must land on merlin before
+    the teos vhost tree ships, otherwise a curl-grep on a freshly
+    deployed teos URL sees new teos config but old/stale engine
+    binaries.
+
+    Prior to 2026-09-29 this chain relied on DEPENDENCIES['teos'] =
+    ['bbsengine6', 'zoid6'] walking bare-base bbsengine6 (which
+    silently emitted ('bbsengine6', None) and ran `make -C bbsengine6
+    deploy` — the engine-library umbrella). The new explicit edge
+    `("bbsengine6", "prod")` in CONDITIONAL_DEPENDENCIES['teos']['www']
+    makes the chain self-documenting and replaces the accidental
+    bare-base behavior.
+    """
+    order = deploytool.lib.resolve(["teos.www"], with_deps=True)
+    assert ("bbsengine6", "prod") in order, (
+        f"('bbsengine6', 'prod') must be in the teos.www --with-deps chain; "
+        f"got {order!r}. The CONDITIONAL_DEPENDENCIES['teos']['www'] entry "
+        f"is what pulls it in."
+    )
+    assert ("teos", "www") in order
+    assert order.index(("bbsengine6", "prod")) < order.index(("teos", "www")), (
+        f"('bbsengine6', 'prod') must run before ('teos', 'www'); got {order!r}. "
+        f"The engine-library install must land before teos's vhost rsync."
+    )
+
+
 def test_teos_www_with_deps_walks_zoid6_shared_first():
     """`deploy --with-deps teos.www` runs zoid6.shared before teos.www.
 
@@ -273,14 +321,8 @@ def test_teos_www_with_deps_walks_zoid6_shared_first():
     shared template must land on the target host before teos's
     vhost config. Otherwise a curl probe after a single deploy can
     see the new config but the old shared template (or vice versa).
-    The full chain also walks bbsengine6 (bare) and zoid6 (bare)
-    per DEPENDENCIES; the assertion pins the relative position of
-    zoid6.shared before teos.www.
     """
     order = deploytool.lib.resolve(["teos.www"], with_deps=True)
-    # bbsengine6 (bare) and zoid6 (bare) come first per
-    # DEPENDENCIES; zoid6.shared comes next per CONDITIONAL_DEPENDENCIES
-    # because teos.www is the requested sub; teos.www last.
     assert ("zoid6", "shared") in order
     assert ("teos", "www") in order
     assert order.index(("zoid6", "shared")) < order.index(("teos", "www")), (
@@ -323,6 +365,67 @@ def test_teos_www_without_with_deps_does_not_walk_zoid6_shared():
     """
     order = deploytool.lib.resolve(["teos.www"], with_deps=False)
     assert order == [("teos", "www")]
+
+
+def test_teos_prod_with_deps_walks_full_chain():
+    """`deploy --with-deps teos.prod` walks bbsengine6.prod ->
+    zoid6.shared -> teos.engine -> teos.prod in that order.
+
+    `teos.prod` is the single-command surface for "stage and install
+    everything required for teos" — the bbsengine6 engine library
+    (php + engine + skin + smarty), the zoid6 shared chrome, the
+    zoidtechnologies.com/html/engine/ install, and the teos vhost
+    itself. The chain walks in topo order: engine library first
+    (it has no deps), shared chrome second (it depends on zoid6
+    being up-to-date), engine install third (it depends on the
+    engine library being staged), and teos.prod last (it depends on
+    everything above being live on merlin).
+    """
+    order = deploytool.lib.resolve(["teos.prod"], with_deps=True)
+    assert order == [
+        ("bbsengine6", "prod"),
+        ("zoid6", "shared"),
+        ("teos", "engine"),
+        ("teos", "prod"),
+    ], (
+        f"deploy --with-deps teos.prod must walk the full chain in "
+        f"this exact topo order; got {order!r}. See "
+        f"CONDITIONAL_DEPENDENCIES['teos']['prod'] for the source of truth."
+    )
+
+
+def test_teos_prod_with_deps_matches_teos_www_chain():
+    """`deploy --with-deps teos.prod` and `deploy --with-deps teos.www`
+    produce identical topo chains except for the trailing sub.
+
+    Both subs alias to the same make target (`deploy-www:` at
+    teos/Makefile:30 via MAKE_TARGET_ALIASES), so the chain shape
+    is intentionally the same — the user-facing difference is
+    intent: `www` says "deploy the teos vhost"; `prod` says "deploy
+    the whole teos stack". Today they produce the same order; future
+    evolution could split them if teos gains a vhost-only deploy.
+    """
+    www_order = deploytool.lib.resolve(["teos.www"], with_deps=True)
+    prod_order = deploytool.lib.resolve(["teos.prod"], with_deps=True)
+    assert www_order[:-1] == prod_order[:-1], (
+        f"teos.www and teos.prod chains must match except for the "
+        f"trailing sub; got www={www_order!r} prod={prod_order!r}"
+    )
+    assert www_order[-1] == ("teos", "www")
+    assert prod_order[-1] == ("teos", "prod")
+
+
+def test_teos_prod_without_with_deps_does_not_walk_chain():
+    """`deploy teos.prod` (no --with-deps) is a single-step deploy.
+
+    Mirrors `test_teos_www_without_with_deps_does_not_walk_zoid6_shared`
+    for the new `prod` sub. The CONDITIONAL_DEPENDENCIES entries are
+    only consulted under --with-deps so the bare sub stays a
+    one-step deploy (callers who don't want the engine-library
+    umbrella / shared chrome pushed keep that opt-out).
+    """
+    order = deploytool.lib.resolve(["teos.prod"], with_deps=False)
+    assert order == [("teos", "prod")]
 
 
 def test_teos_tui_with_deps_does_not_walk_zoid6_shared():

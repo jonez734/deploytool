@@ -2,7 +2,7 @@
 the handbook sub-target, and the stage/prod split that surfaces
 the engine entry-point install on the zoidtechnologies.com vhost.
 
-bbsengine6 exposes seven subs under deploytool:
+bbsengine6 exposes eight subs under deploytool:
 
   - `bbsengine6.tui`         — Python wheel build + venv install
                               (via `deploy-tui`).
@@ -13,6 +13,18 @@ bbsengine6 exposes seven subs under deploytool:
   - `bbsengine6.wwwcom`      — stage + rsync the bbsengine.com website
                               (`bbsengine6/www/com`). Driven by the
                               `deploy-wwwcom` wrapper.
+  - `bbsengine6.prod`        — engine-library umbrella: stage + merlin
+                              push of `engine/`, `skin/`, `php/`, and
+                              `smarty/` in one chain. Driven by the
+                              existing `deploy:` rule at
+                              `bbsengine6/Makefile:286`. Aliased via
+                              `MAKE_TARGET_ALIASES[("bbsengine6",
+                              "prod")] = "deploy"`. Added 2026-09-29
+                              to replace the legacy `www` sub (which
+                              mapped to the same umbrella but was
+                              confused with the wwworg/wwwcom website
+                              deploys). Detailed tests live in
+                              `test_deploy_bbsengine6_prod.py`.
   - `bbsengine6.handbook`    — stage the handbook tree and ship the
                               blurb/markdown-rendered handler for
                               `https://bbsengine.org/handbook/<v>/<path>`.
@@ -33,7 +45,7 @@ bbsengine6 exposes seven subs under deploytool:
 The website deploys (`bbsengine.org`, `bbsengine.com`) historically
 lived behind the legacy `bbsengine6.www` sub (which actually
 deployed the engine library, not the websites). The legacy `www`
-sub is removed: bare `deploy bbsengine6` now lists the seven
+sub is removed: bare `deploy bbsengine6` now lists the eight
 current subs and exits 1, and a caller using the legacy
 `bbsengine6.www` gets an "unknown sub-target" error naming the
 new ones.
@@ -57,15 +69,16 @@ import deploytool.lib
 # ---------------------------------------------------------------------------
 
 
-def test_bbsengine6_targets_has_seven_subs():
-    """bbsengine6 must expose exactly tui, wwworg, wwwcom, handbook,
-    handbook-prod, engine-stage, engine-prod.
+def test_bbsengine6_targets_has_eight_subs():
+    """bbsengine6 must expose exactly tui, wwworg, wwwcom, prod,
+    handbook, handbook-prod, engine-stage, engine-prod.
 
     A single-sub TARGETS would let bare `deploy bbsengine6` auto-pick,
     defeating the operator's intent to be forced to name a sub.
-    A two- or three-sub TARGETS would silently drop one of the seven
+    A two- or three-sub TARGETS would silently drop one of the eight
     sub-targets (the handbook, the merlin-push umbrella, one of the
-    website deploys, or one of the engine stage/prod pairs).
+    website deploys, the engine-library umbrella, or one of the engine
+    stage/prod pairs).
 
     `handbook` runs the local-stage target (`make handbook-prod`),
     while `handbook-prod` runs the merlin-push umbrella
@@ -78,15 +91,21 @@ def test_bbsengine6_targets_has_seven_subs():
     `test_deploy_bbsengine6_engine.py`) split the engine entry-point
     PHP install onto the zoidtechnologies.com vhost into a local
     stage step and a merlin-push prod step.
+
+    `prod` (covered in detail by `test_deploy_bbsengine6_prod.py`)
+    is the engine-library umbrella: stage + merlin push of `engine/`,
+    `skin/`, `php/`, and `smarty/` in one chain. Added 2026-09-29 to
+    replace the legacy `www` sub; the make-target alias lives at
+    `MAKE_TARGET_ALIASES[("bbsengine6", "prod")] = "deploy"`.
     """
     targets = deploytool.lib.get_targets("bbsengine6")
-    assert targets == ["tui", "wwworg", "wwwcom", "handbook", "handbook-prod", "engine-stage", "engine-prod"], (
-        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'handbook', 'handbook-prod', 'engine-stage', 'engine-prod']; "
+    assert targets == ["tui", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod"], (
+        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'prod', 'handbook', 'handbook-prod', 'engine-stage', 'engine-prod']; "
         f"got {targets!r}. Bare `deploy bbsengine6` must stay ambiguous "
         "(warn + exit 1) so the operator names a sub explicitly, and all "
-        "seven sub-targets (the two website deploys, the handbook stage, "
-        "the merlin-push handbook-prod umbrella, and the engine "
-        "stage/prod pair) must remain reachable."
+        "eight sub-targets (the two website deploys, the engine-library "
+        "umbrella, the handbook stage, the merlin-push handbook-prod "
+        "umbrella, and the engine stage/prod pair) must remain reachable."
     )
 
 
@@ -110,7 +129,7 @@ def test_bbsengine6_targets_does_not_contain_legacy_www():
 
 
 def test_bare_bbsengine6_is_ambiguous(monkeypatch):
-    """`deploy bbsengine6` (bare) lists all seven subs and exits 1."""
+    """`deploy bbsengine6` (bare) lists all eight subs and exits 1."""
     msgs = []
     monkeypatch.setattr(
         deploytool.lib.io,
@@ -131,6 +150,7 @@ def test_bare_bbsengine6_is_ambiguous(monkeypatch):
     assert "tui" in out, "resolver must list tui in the available subs"
     assert "wwworg" in out, "resolver must list wwworg in the available subs"
     assert "wwwcom" in out, "resolver must list wwwcom in the available subs"
+    assert "prod" in out, "resolver must list prod in the available subs"
     assert "handbook" in out, "resolver must list handbook in the available subs"
     assert "handbook-prod" in out, "resolver must list handbook-prod in the available subs"
     assert "engine-stage" in out, "resolver must list engine-stage in the available subs"
@@ -141,7 +161,7 @@ def test_bare_bbsengine6_under_with_deps_is_also_ambiguous(monkeypatch):
     """`deploy --with-deps bbsengine6` (bare) is still ambiguous.
 
     `--with-deps` only controls dep walking, not sub expansion.
-    Seven-sub TARGETS still trips the ambiguity gate.
+    Eight-sub TARGETS still trips the ambiguity gate.
     """
     msgs = []
     monkeypatch.setattr(

@@ -61,7 +61,7 @@ def test_bbsengine6_targets_includes_engine_stage_and_engine_prod():
     """bbsengine6 TARGETS must end with the engine stage/prod pair.
 
     The exact-list assertion lives in
-    `test_deploy_bbsengine6_www.py::test_bbsengine6_targets_has_seven_subs`
+    `test_deploy_bbsengine6_www.py::test_bbsengine6_targets_has_eight_subs`
     so the full shape is pinned there. This test focuses on the
     new entries: their presence at the tail of the list, in the
     documented order, with no duplicate or shadow.
@@ -83,7 +83,7 @@ def test_bbsengine6_targets_includes_engine_stage_and_engine_prod():
 
 # ---------------------------------------------------------------------------
 # Bare invocation: warn + exit (delegated to test_deploy_bbsengine6_www.py
-# for the full seven-sub assertion; here we just confirm engine subs are
+# for the full eight-sub assertion; here we just confirm engine subs are
 # reachable via the bare-base path).
 # ---------------------------------------------------------------------------
 
