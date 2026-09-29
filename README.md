@@ -62,7 +62,7 @@ deploy casino
 # bare base with --with-deps is the "build the whole thing" shortcut:
 # auto-expands subs AND walks the full dep chain
 deploy --with-deps casino
-# -> bbsengine6.tui, bbsengine6.www, bed.tui, casino.tui, casino.www
+# -> bbsengine6.tui, bbsengine6.prod, bed.tui, casino.tui, casino.www
 
 # explicit sub under --with-deps: chain for that sub
 deploy --with-deps casino.tui
@@ -92,6 +92,10 @@ deploy mistermcfeely
 # bbsengine6 website deploys (bbsengine.org / bbsengine.com)
 deploy bbsengine6.wwworg
 deploy bbsengine6.wwwcom
+
+# bbsengine6 engine-library umbrella (php + engine + skin + smarty stage+prod push)
+deploy bbsengine6.prod          # -> make -C bbsengine6 deploy (the umbrella rule)
+deploy bbsengine6.p             # same as bbsengine6.prod (unique short prefix)
 
 # bbsengine6 engine entry-point deploys (zoidtechnologies.com vhost):
 # stage/prod split. Engine-stage is local rsync only;
@@ -181,19 +185,27 @@ deploys:
   bed.tui → `deploy-venv` resolution; bbsengine6.tui conditional dep.
 - `test_deploy_getdate_next_tui.py` — `PREPARE_BUILD` invariants
   (foreign-owned `build/` chmod EPERM; `chmod 1775` not `chmod g-s`).
-- `test_deploy_bbsengine6_www.py` — five- (now seven-) sub TARGETS shape for
-  `bbsengine6` (`tui`, `wwworg`, `wwwcom`, `handbook`, `handbook-prod`,
-  `engine-stage`, `engine-prod`); legacy `www` removed;
-  bare-base ambiguity; explicit-sub resolution; make-rule wiring
-  for `deploy-wwworg` / `deploy-wwwcom` and their `wwworg:` /
-  `wwwcom:` delegates in `bbsengine6/Makefile`. The engine subs
-  get their own dedicated regression file (`test_deploy_bbsengine6_engine.py`)
-  covering stage/prod split, prefix matching, and the underlying
-  `bbsengine6/engine/Makefile` shape.
+- `test_deploy_bbsengine6_www.py` — five- (now seven-, now eight-) sub
+  TARGETS shape for `bbsengine6` (`tui`, `wwworg`, `wwwcom`, `prod`,
+  `handbook`, `handbook-prod`, `engine-stage`, `engine-prod`); legacy
+  `www` removed; bare-base ambiguity; explicit-sub resolution;
+  make-rule wiring for `deploy-wwworg` / `deploy-wwwcom` and their
+  `wwworg:` / `wwwcom:` delegates in `bbsengine6/Makefile`. The engine
+  subs get their own dedicated regression file
+  (`test_deploy_bbsengine6_engine.py`) covering stage/prod split,
+  prefix matching, and the underlying `bbsengine6/engine/Makefile`
+  shape. The new engine-library umbrella sub `prod` gets its own
+  dedicated regression file (`test_deploy_bbsengine6_prod.py`)
+  covering the umbrella alias, cross-project consumers (zoid6.www,
+  casino.www, article2.www, teos.www, teos.prod), bare-base dedup,
+  and the `deploy:` Makefile rule guard.
 - `test_deploy_with_deps.py` — `--with-deps` flag and bare-base
   ambiguity rules (multi-sub TARGETS lists subs and exits 1;
   single-sub TARGETS auto-picks; bare under `--with-deps` auto-
-  expands subs and walks dep chains).
+  expands subs and walks dep chains); also pins the teos.www and
+  teos.prod `--with-deps` chain shapes (the explicit
+  `bbsengine6.prod` edge replaces the previous implicit bare-base
+  transitive behavior).
 - `test_deploy_aborts_on_step_failure.py` — `run_make_deploy` /
   `run_verify` exception contract (`DeployFailed`), env handling
   (`--editable` set/strip), subprocess hardening, abort propagation
