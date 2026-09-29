@@ -358,7 +358,7 @@ def resolve(projects, with_deps=False):
                     break
 
         if base not in DEPENDENCIES:
-            io.echo(f"unknown project: {{bold}}{base}{{/all}}", level="error")
+            io.echo(f"unknown project: {{bold}}{base}", level="error")
             sys.exit(1)
 
         targets = get_targets(base)
@@ -382,7 +382,7 @@ def resolve(projects, with_deps=False):
                     available = ", ".join(targets)
                     matches_str = ", ".join(matches)
                     io.echo(
-                        f"ambiguous sub-target prefix {{bold}}{project}{{/all}}; "
+                        f"ambiguous sub-target prefix {{bold}}{project}; "
                         f"`{sub}` matches: {matches_str} "
                         f"(available: {available})",
                         level="error",
@@ -391,7 +391,7 @@ def resolve(projects, with_deps=False):
                 if resolved is None:
                     available = ", ".join(targets)
                     io.echo(
-                        f"unknown sub-target {{bold}}{project}{{/all}}; "
+                        f"unknown sub-target {{bold}}{project}; "
                         f"available: {available}",
                         level="error",
                     )
@@ -409,9 +409,9 @@ def resolve(projects, with_deps=False):
     if ambiguous:
         for base, targets in ambiguous:
             io.echo(
-                f"{{bold}}{base}{{/all}} has multiple sub-targets "
+                f"{{bold}}{base} has multiple sub-targets "
                 f"({', '.join(targets)}); choose one or more, e.g. "
-                f"`deploy {base}.{targets[0]}`{{/all}}",
+                f"`deploy {base}.{targets[0]}`",
                 level="error",
             )
         sys.exit(1)
