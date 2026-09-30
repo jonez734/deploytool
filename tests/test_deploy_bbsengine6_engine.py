@@ -44,7 +44,6 @@ removes the underlying `stage` / `deploy-engine` targets in
 """
 
 import argparse
-import os
 import re
 from pathlib import Path
 
@@ -292,139 +291,38 @@ def test_bbsengine6_makefile_engine_stage_delegates_to_engine_submake():
     )
 
 
-def test_engine_makefile_wildcard_includes_vhostconfig():
-    """Pin the vhostconfig.php delivery contract end-to-end.
+def test_engine_vhostconfig_php_does_not_exist():
+    """Pin that engine/vhostconfig.php is not reintroduced.
 
-    bbsengine6/engine/Makefile stages every *.php file in
-    bbsengine6/engine/ via `ENGINE_PHP = $(wildcard *.php)` and pushes
-    the resulting list to $(ENGINESTAGEDOCROOT) on merlin. There is no
-    per-file allow-list to update when adding a new engine helper —
-    just drop the .php file. vhostconfig.php (extracted from
-    router.php on 2026-09-24) MUST be included in the staged payload;
-    otherwise the VHOSTCONFIG resolver at engine/vhostconfig.php:42
-    fails to load on every vhost.
+    The VHOSTCONFIG resolver was removed on 2026-09-29 (bbsengine6
+    commit 02eebac, deploytool test replaces this). The resolver was
+    a workaround for mod_env + mod_rewrite + mod_proxy_fcgi combos
+    where SetEnv didn't propagate to FPM. In production on merlin it
+    never worked anyway — every teos request logged
+    envconfig='NEEDINFO...' (the default sentinel), meaning
+    VHOSTCONFIG was silently missing and the SCRIPT_FILENAME fallback
+    was doing all the work. The resolver + its tests are gone; this
+    test catches accidental resurrection.
 
-    Three layers of assertion, because the deployment surface is small
-    but the failure modes are subtle:
-
-      1. Static: the Makefile uses the wildcard form (so a future
-         regression replacing it with an explicit list that omits
-         vhostconfig.php is caught here).
-      2. Existence: bbsengine6/engine/vhostconfig.php exists on disk
-         (catches would-be wildcard misses, e.g. wrong extension).
-      3. Typo-pin: the function body in vhostconfig.php references
-         $envConfig (camelCase), NOT $envconfig (lowercase). The
-         lowercase form silently coerces to NULL inside var_export()
-         and emits "envconfig=NULL" to the journal, masking whether
-         VHOSTCONFIG is actually set on the FPM side. This was the
-         root cause of these two production lines on
-         merlin.zoidtechnologies.com on 2026-09-29:
-
-           - PHP Warning:  Undefined variable $envconfig ...
-             engine/vhostconfig.php on line 47
-           - engine.router.router_resolve_vhost_config.100: envconfig=NULL
-
-         Pinning the camelCase form catches the regression in CI
-         before it reaches the merlin journal.
-
-    Also runs `make -n -C bbsengine6/engine stage` (dry-run, with a
-    throwaway ENGINESTAGEDOCROOT) and greps the output for
-    vhostconfig.php to catch wildcard-evaluation regressions that the
-    static check would miss (e.g. someone moving to $(shell ...) or a
-    conditional that excludes it). Precedent for make-shape guards:
-    bbsengine6/tests/test_handbook_6_returns_200.sh:210-212.
+    The wildcard contract (`ENGINE_PHP = $(wildcard *.php)`) is
+    still pinned by the surrounding tests in this file
+    (test_engine_makefile_has_stage_target,
+    test_engine_makefile_has_deploy_engine_target,
+    test_engine_makefile_default_docroot_points_to_zoidtechnologies).
     """
-    import subprocess
-
-    makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "engine" / "Makefile"
-    text = makefile.read_text()
-
-    # Layer 1: wildcard form. ENGINE_PHP = $(wildcard *.php) means
-    # any new *.php file dropped into bbsengine6/engine/ is staged
-    # automatically. A regression that replaces this with an explicit
-    # list (e.g. ENGINE_PHP = router.php serve-md.php ...) would
-    # silently break vhostconfig.php delivery the next time someone
-    # adds a new entry-point without updating the list.
-    assert re.search(
-        r"^ENGINE_PHP\s*=\s*\$\(wildcard\s+\*\.php\)", text, re.MULTILINE
-    ), (
-        "bbsengine6/engine/Makefile must use `ENGINE_PHP = $(wildcard "
-        "*.php)` so any *.php file is staged without an explicit "
-        "allow-list. An explicit list would silently miss future "
-        "engine helpers (and vhostconfig.php itself if someone "
-        "rewrites the recipe)."
+    vhostconfig = (
+        Path(deploytool.lib.SOURCE_BASE)
+        / "bbsengine6" / "engine" / "vhostconfig.php"
     )
-
-    # Layer 2: vhostconfig.php exists on disk. A file that doesn't end
-    # in .php would be missed by the wildcard.
-    vhostconfig = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "engine" / "vhostconfig.php"
-    assert vhostconfig.is_file(), (
-        f"{vhostconfig} not found. The wildcard at engine/Makefile:32 "
-        f"only matches *.php; vhostconfig.php must end in .php to be "
-        f"staged."
-    )
-
-    # Layer 3: typo-pin. The log line emitted by vhostconfig.php:47
-    # references $envconfig (lowercase) in real PHP, which is an
-    # undefined variable, so var_export() silently produces "NULL" and
-    # PHP emits "Warning: Undefined variable $envconfig". This masks
-    # whether VHOSTCONFIG is actually set on the FPM side. Pin the
-    # camelCase form so a regression is caught by CI before it reaches
-    # merlin's journal.
-    src = vhostconfig.read_text()
-    # Must reference $envConfig (camelCase) at least once.
-    assert re.search(r"\$envConfig\b", src), (
-        "vhostconfig.php should reference $envConfig (camelCase). "
-        "If you renamed the local, update both line 45 and line 47."
-    )
-    # Must NOT reference $envconfig (lowercase) anywhere. Strict ban
-    # for now — explanatory comments about the historical typo are
-    # not allowed in the file; the regression risk outweighs the
-    # documentation value. If we ever want to add an explanatory
-    # comment, loosen this with a line-by-line carve-out.
-    bad = re.findall(r"\$envconfig\b", src)
-    assert not bad, (
-        f"vhostconfig.php must not reference $envconfig (lowercase). "
-        f"Found {len(bad)} occurrence(s). The line-47 typo causes "
-        f"PHP Warning: Undefined variable $envconfig and "
-        f"var_export() silently produces 'NULL' in the journal, "
-        f"masking the real VHOSTCONFIG value. Use $envConfig."
-    )
-
-    # Dry-run layer: invoke `make -n -C bbsengine6/engine stage` with a
-    # throwaway ENGINESTAGEDOCROOT and assert the rsync command line
-    # that make would actually run names vhostconfig.php. Catches
-    # wildcard-evaluation regressions the static check would miss
-    # (e.g. someone moving to $(shell ...) or a conditional that
-    # excludes it). Uses subprocess so we don't depend on the user's
-    # shell environment for `make` resolution.
-    try:
-        proc = subprocess.run(
-            [
-                "make", "-n", "-C", str(makefile.parent),
-                "stage",
-                f"ENGINESTAGEDOCROOT=/tmp/test-engine-stage-{os.getpid()}",
-                f"ENGINEHOST=merlin-test-{os.getpid()}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except FileNotFoundError:
-        pytest.skip("`make` not on PATH; skipping dry-run layer")
-    except subprocess.TimeoutExpired:
-        pytest.fail("`make -n -C bbsengine6/engine stage` timed out")
-
-    combined = proc.stdout + proc.stderr
-    assert proc.returncode == 0, (
-        f"`make -n -C bbsengine6/engine stage` exited {proc.returncode}. "
-        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
-    )
-    assert "vhostconfig.php" in combined, (
-        "`make -n -C bbsengine6/engine stage` must emit an rsync "
-        "command line that names vhostconfig.php. The wildcard at "
-        "engine/Makefile:32 should pick it up automatically. Got:\n"
-        f"{combined}"
+    assert not vhostconfig.exists(), (
+        f"{vhostconfig} exists. The VHOSTCONFIG resolver was removed "
+        f"on 2026-09-29 because it never worked on merlin (every "
+        f"request logged envconfig='NEEDINFO...'). The chain "
+        f"('deploy teos.prod', 'deploy bbsengine6.wwworg') now relies "
+        f"on VHOSTDOCROOT + bbsengine6\\bootstrap() + "
+        f"bbsengine6config.php's stream_resolve_include_path() to "
+        f"find the vhost's config.php. If you're reintroducing the "
+        f"resolver, justify it with a production incident first."
     )
 
 

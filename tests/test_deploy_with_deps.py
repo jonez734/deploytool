@@ -408,18 +408,16 @@ def test_teos_engine_delegates_to_bbsengine6_engine_deploy_prod():
     `make -C engine deploy`).
 
     Without this delegation, 'deploy --with-deps teos.prod' would
-    silently fail to land the bbsengine6/engine/*.php files (including
-    the newly-extracted vhostconfig.php) into
+    silently fail to land the bbsengine6/engine/*.php files into
     /srv/www/vhosts/zoidtechnologies.com/html/engine/ on merlin before
-    teos's own vhost rsync. Every vhost on merlin would then 500 with
-    'PHP Warning: Undefined variable $envconfig' (or similar) on
+    teos's own vhost rsync. Every vhost on merlin would then 500 on
     every request. This test is the regression guard.
 
     Note: ('bbsengine6', 'prod') is walked separately by
     CONDITIONAL_DEPENDENCIES['teos']['prod'] and lands the engine
     LIBRARY (php + skin + smarty) at /srv/www/bbsengine6/. The
     ('teos', 'engine') step is what lands the engine entry-points
-    (router.php, vhostconfig.php, ...) into the vhost tree at
+    (router.php, serve-md.php, ...) into the vhost tree at
     /srv/www/vhosts/zoidtechnologies.com/html/engine/. Two different
     surfaces; both required.
     """
@@ -459,7 +457,7 @@ def test_teos_engine_delegates_to_bbsengine6_engine_deploy_prod():
         f"`make -C ../bbsengine6 engine-deploy-prod` (the canonical "
         f"engine-install umbrella at bbsengine6/Makefile:245-246). "
         f"Without this delegation, the bbsengine6/engine/*.php files "
-        f"(including vhostconfig.php) won't land in the vhost tree."
+        f"won't land in the vhost tree."
     )
 
     # Verify the topo order from the parent test still holds — i.e.

@@ -173,15 +173,6 @@ CONDITIONAL_DEPENDENCIES = {
             # run_make_deploy below. Wired in the "www" sub only — teos.tui
             # does NOT need the engine install (the TUI doesn't render
             # engine-rendered templates).
-            #
-            # The engine install lands vhostconfig.php (extracted from
-            # router.php on 2026-09-24) alongside router.php via the
-            # $(wildcard *.php) rsync at bbsengine6/engine/Makefile:32.
-            # test_engine_makefile_wildcard_includes_vhostconfig in
-            # deploytool/tests/test_deploy_bbsengine6_engine.py pins
-            # this contract end-to-end (wildcard form + file existence
-            # + typo-pin against the $envconfig/$envConfig casing
-            # regression that masked VHOSTCONFIG being unset on FPM).
             ("teos", "engine"),
         ],
         # Added 2026-09-29 — `deploy teos.prod` is the single-command
