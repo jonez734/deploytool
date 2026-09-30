@@ -394,6 +394,91 @@ def test_teos_prod_with_deps_walks_full_chain():
     )
 
 
+def test_teos_engine_delegates_to_bbsengine6_engine_deploy_prod():
+    """Pin the (project, sub) -> make-target delegation for teos.engine.
+
+    CONDITIONAL_DEPENDENCIES['teos']['prod'] walks ('teos', 'engine')
+    as the third step (after bbsengine6.prod and zoid6.shared). The
+    ('teos', 'engine') pair has no MAKE_TARGET_ALIASES entry, so
+    run_make_deploy falls through to the default `deploy-<sub>` shape
+    and runs `make -C <teos> deploy-engine` (lib.py:639-643). That
+    target must exist in teos/Makefile AND must delegate to
+    `make -C ../bbsengine6 engine-deploy-prod` — the canonical
+    engine-install umbrella (bbsengine6/Makefile:245-246, which calls
+    `make -C engine deploy`).
+
+    Without this delegation, 'deploy --with-deps teos.prod' would
+    silently fail to land the bbsengine6/engine/*.php files (including
+    the newly-extracted vhostconfig.php) into
+    /srv/www/vhosts/zoidtechnologies.com/html/engine/ on merlin before
+    teos's own vhost rsync. Every vhost on merlin would then 500 with
+    'PHP Warning: Undefined variable $envconfig' (or similar) on
+    every request. This test is the regression guard.
+
+    Note: ('bbsengine6', 'prod') is walked separately by
+    CONDITIONAL_DEPENDENCIES['teos']['prod'] and lands the engine
+    LIBRARY (php + skin + smarty) at /srv/www/bbsengine6/. The
+    ('teos', 'engine') step is what lands the engine entry-points
+    (router.php, vhostconfig.php, ...) into the vhost tree at
+    /srv/www/vhosts/zoidtechnologies.com/html/engine/. Two different
+    surfaces; both required.
+    """
+    import re
+    from pathlib import Path
+
+    import deploytool.lib
+
+    # Pin the make-target delegation shape. The (project, sub) pair
+    # has no MAKE_TARGET_ALIASES entry (run_make_deploy falls through
+    # to `deploy-engine:`).
+    assert ("teos", "engine") not in deploytool.lib.MAKE_TARGET_ALIASES, (
+        "('teos', 'engine') has no MAKE_TARGET_ALIASES entry by design "
+        "(run_make_deploy falls through to the `deploy-engine:` rule "
+        "in teos/Makefile:78). If you've added an alias here, update "
+        "this assertion AND the docstring above."
+    )
+
+    # Verify the make rule actually delegates to the canonical
+    # engine-install umbrella.
+    teos_makefile = Path(deploytool.lib.SOURCE_BASE) / "teos" / "Makefile"
+    text = teos_makefile.read_text()
+    assert re.search(
+        r"^deploy-engine:",
+        text,
+        re.MULTILINE,
+    ), (
+        f"{teos_makefile} must define a `deploy-engine:` target. "
+        f"This is the make target run_make_deploy invokes for "
+        f"('teos', 'engine'). Got:\n{text}"
+    )
+    assert re.search(
+        r"\$\(MAKE\)\s+-C\s+\.\./bbsengine6\s+engine-deploy-prod",
+        text,
+    ), (
+        f"{teos_makefile} `deploy-engine:` target must delegate to "
+        f"`make -C ../bbsengine6 engine-deploy-prod` (the canonical "
+        f"engine-install umbrella at bbsengine6/Makefile:245-246). "
+        f"Without this delegation, the bbsengine6/engine/*.php files "
+        f"(including vhostconfig.php) won't land in the vhost tree."
+    )
+
+    # Verify the topo order from the parent test still holds — i.e.
+    # the chain teos.prod walks actually visits ('teos', 'engine').
+    order = deploytool.lib.resolve(["teos.prod"], with_deps=True)
+    assert ("teos", "engine") in order, (
+        f"('teos', 'engine') must be in the topo chain for "
+        f"deploy --with-deps teos.prod; got {order!r}. The engine "
+        f"install has to land before teos's own vhost rsync."
+    )
+    # And it must come before ('teos', 'prod') in the chain (deps
+    # before dependents).
+    assert order.index(("teos", "engine")) < order.index(("teos", "prod")), (
+        f"('teos', 'engine') must precede ('teos', 'prod') in the "
+        f"topo chain; got {order!r}. The engine install is a "
+        f"prerequisite for the teos vhost rsync."
+    )
+
+
 def test_teos_prod_with_deps_matches_teos_www_chain():
     """`deploy --with-deps teos.prod` and `deploy --with-deps teos.www`
     produce identical topo chains except for the trailing sub.
