@@ -291,18 +291,43 @@ def test_bbsengine6_makefile_engine_stage_delegates_to_engine_submake():
     )
 
 
-def test_engine_vhostconfig_php_does_not_exist():
-    """Pin that engine/vhostconfig.php is not reintroduced.
+def test_engine_vhostconfig_php_exists_with_resolver():
+    """Pin that engine/vhostconfig.php is restored with the resolver contract.
 
     The VHOSTCONFIG resolver was removed on 2026-09-29 (bbsengine6
-    commit 02eebac, deploytool test replaces this). The resolver was
-    a workaround for mod_env + mod_rewrite + mod_proxy_fcgi combos
-    where SetEnv didn't propagate to FPM. In production on merlin it
-    never worked anyway — every teos request logged
-    envconfig='NEEDINFO...' (the default sentinel), meaning
-    VHOSTCONFIG was silently missing and the SCRIPT_FILENAME fallback
-    was doing all the work. The resolver + its tests are gone; this
-    test catches accidental resurrection.
+    commit 02eebac, deploytool test replaced). The removal was
+    premature on merlin: mod_proxy_fcgi + FPM clear_env=yes (the
+    PHP 7+ default) strips Apache's SetEnv directives at the FPM
+    boundary, so VHOSTDOCROOT never reaches the FPM worker, and the
+    include_path-only chain at bbsengine6config.php:51 misses the
+    vhost's config.php. The 2026-09-29 teos
+    /ec/investigated-psychics-fraud-pigasus.md incident (text/html
+    "Router Error" instead of text/plain raw markdown) was traced
+    to exactly this gap — the dispatch loop's rawmarkdown handler
+    returned ROUTER_NEXT because TEOSDIR was also stripped, then
+    router_handleError's chrome-render fallback died in getsmarty()
+    because config\\SMARTYTEMPLATESDIR was never defined.
+
+    Restored on 2026-10-XX (this test replaces the prior
+    test_engine_vhostconfig_php_does_not_exist). The resolver lives
+    at bbsengine6/engine/vhostconfig.php in the bbsengine6\router
+    namespace and exposes the function router_resolve_vhost_config().
+    Its resolution order:
+
+      1. VHOSTCONFIG env var (preferred; absolute path; set by every
+         htaccess-prod in the repo as SetEnv VHOSTCONFIG <abs-path>).
+      2. SCRIPT_FILENAME fallback — walks up from
+         <docroot>/engine/<script>.php to <docroot>/ and probes known
+         vhost subdirs (config.php, teos/, org/, com/, bbsengine.org/).
+      3. Returns false. bbsengine6config.php's
+         stream_resolve_include_path() chain runs as tertiary
+         fallback (CLI tests, partial deploys).
+
+    The SCRIPT_FILENAME path is the load-bearing one for merlin in
+    its current Apache + mod_proxy_fcgi + FPM configuration, since
+    SetEnv doesn't reach FPM. Future Apache config changes that
+    propagate env vars to FPM make path 1 (faster) usable without
+    changing this code.
 
     The wildcard contract (`ENGINE_PHP = $(wildcard *.php)`) is
     still pinned by the surrounding tests in this file
@@ -314,15 +339,28 @@ def test_engine_vhostconfig_php_does_not_exist():
         Path(deploytool.lib.SOURCE_BASE)
         / "bbsengine6" / "engine" / "vhostconfig.php"
     )
-    assert not vhostconfig.exists(), (
-        f"{vhostconfig} exists. The VHOSTCONFIG resolver was removed "
-        f"on 2026-09-29 because it never worked on merlin (every "
-        f"request logged envconfig='NEEDINFO...'). The chain "
-        f"('deploy teos.prod', 'deploy bbsengine6.wwworg') now relies "
-        f"on VHOSTDOCROOT + bbsengine6\\bootstrap() + "
-        f"bbsengine6config.php's stream_resolve_include_path() to "
-        f"find the vhost's config.php. If you're reintroducing the "
-        f"resolver, justify it with a production incident first."
+    assert vhostconfig.exists(), (
+        f"{vhostconfig} does not exist. The VHOSTCONFIG resolver was "
+        f"restored on 2026-10-XX (see CHANGELOG [Unreleased] section "
+        f"and bbsengine6/engine/vhostconfig.php docblock) because the "
+        f"include_path-only chain at bbsengine6config.php:51 fails on "
+        f"merlin's mod_proxy_fcgi + FPM clear_env=yes plumbing. Without "
+        f"this resolver the vhost's config.php doesn't load and "
+        f"\\config\\SMARTYTEMPLATESDIR is undefined. If you're removing "
+        f"the resolver, fix the underlying FPM env propagation first."
+    )
+    text = vhostconfig.read_text()
+    assert "function router_resolve_vhost_config" in text, (
+        f"{vhostconfig} must define "
+        f"bbsengine6\\router\\router_resolve_vhost_config. Got:\n{text}"
+    )
+    assert "SCRIPT_FILENAME" in text, (
+        f"{vhostconfig} must include a SCRIPT_FILENAME-based fallback "
+        f"for deployments where Apache SetEnv doesn't reach FPM. Got:\n{text}"
+    )
+    assert "getenv('VHOSTCONFIG')" in text or 'getenv("VHOSTCONFIG")' in text, (
+        f"{vhostconfig} must read VHOSTCONFIG env var as the primary "
+        f"resolution path. Got:\n{text}"
     )
 
 
