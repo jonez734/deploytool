@@ -12,6 +12,12 @@ from deploytool._version import __version__
 PACKAGENAME = "deploytool"
 SOURCE_BASE = "/home/opencode/data/work"
 DEFAULT_HOST = "merlin"
+# Cyrus IMAP lives on a different host than the Dovecot / BBS host.
+# Used by the bbsengine6 auth install targets (which push to both
+# hosts) and by the etc-postoffice install (which goes to CYRUS_HOST
+# only). The CYRUS_HOST install is invoked via
+# `deploy bbsengine6.cyrus-on-falcon --host CYRUS_HOST`.
+CYRUS_HOST = "falcon"
 DEFAULT_TIMEOUT_SECONDS = 600
 
 
@@ -227,7 +233,7 @@ TARGETS = {
     # `wwwcom` and `handbook` to keep the two website subs first,
     # then the engine-library deploy, then the handbook/engine-stage
     # surface at the tail.
-    "bbsengine6": ["tui", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod"],
+    "bbsengine6": ["tui", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod", "install-bbsengine6-auth-helper", "install-pam-bbsengine6-on-merlin", "install-bbsengine6-everything"],
     "getdate_next": ["tui"],
     "mistermcfeely": ["tui", "prod"],
 }
