@@ -100,6 +100,30 @@ item (for example, "implement zd6").
     make target 'repo'" because `repo` is defined only in `src/`. Now runs
     build once, then `$(MAKE) -C src repo`, then `rename-sdist sign`.
 
+### Not yet in deploytool
+
+Project folders under `/home/opencode/data/work/` that are git repos with a
+GitHub remote but have no entry in `DEPENDENCIES`. Adding one means a
+`DEPENDENCIES` entry, plus `TARGETS` once the Makefile has real deploy rules.
+Nothing here is added to `lib.py` yet.
+
+[ ] [bs5] **bbsengine5** (`git@github.com:jonez734/bbsengine5.git`) — Makefile
+    has `prod`, `www`, `release`, `handbook`, `sql`, `apidocs`, `push`. Older
+    engine; check whether it still deploys before adding. Makefile 92 lines.
+[ ] [mny] **moneyday** (`git@github.com:jonez734/moneyday.git`) — Makefile has
+    `prod`, `push`. No `tui`/`www`. Makefile 43 lines.
+[ ] [sib] **setupimagebbs** (`git@github.com:jonez734/setupimagebbs.git`) —
+    Makefile has only `all`/`clean`; nothing to deploy yet. Makefile 5 lines.
+[ ] [soc] **socrates** (`git@github.com:jonez734/socrates.git`) — Makefile has
+    `build`, `sdist`, `version`, `prod`. Python package; likely a `tui` sub.
+    Makefile 30 lines.
+[ ] [stl] **soctools** (`git@github.com:jonez734/soctools.git`) — Makefile has
+    only `prod`; very small. Makefile 7 lines.
+[ ] [vul] **vulcan** (`git@github.com:jonez734/vulcan.git`) — Makefile has
+    `version`, `backup`; no deploy target. Makefile 17 lines.
+[ ] [zdl] **zoidlan** (`git@github.com:jonez734/zoidlan.git`) — no Makefile.
+    Needs one before it can be deployed.
+
 Known pre-existing test failures (not caused by this work, 7 total):
 bbsengine6 engine/www pins, `bed` `deploy-tui`, mistermcfeely wheel
 packages. Run with `PYTHONPATH=src python -m pytest tests`.
