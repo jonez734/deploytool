@@ -63,6 +63,14 @@ ALIASES = {
     "postoffice": "mistermcfeely",
 }
 
+# Whole-target aliases: a bare name that expands to a full `project.sub`
+# target. Applied before the `project.sub` split, so `deploy wwworg` is
+# exactly `deploy bbsengine6.wwworg`. A `.sub` typed after the alias is
+# not supported (it would be ambiguous).
+SUB_ALIASES = {
+    "wwworg": "bbsengine6.wwworg",
+}
+
 _ALIAS_PATTERNS = []
 
 ALIAS_PATTERNS = [(re.compile(pattern), canonical) for pattern, canonical in _ALIAS_PATTERNS]
@@ -427,6 +435,8 @@ def resolve(projects, with_deps=False):
     explicit_subs = set()
     ambiguous = []  # bare bases with TARGETS that did NOT get auto-picked
     for project in projects:
+        if project in SUB_ALIASES:
+            project = SUB_ALIASES[project]
         parts = project.split(".", 1)
         base = parts[0]
         sub = parts[1] if len(parts) > 1 else None
