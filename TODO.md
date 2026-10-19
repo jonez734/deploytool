@@ -70,7 +70,13 @@ item (for example, "implement zd6").
     duplicate `engine stage` that the umbrella ran twice. Subs `wwworg`,
     `wwwcom`, `handbook*`, `engine-*`, auth, and `deploy-tui` are unchanged.
     Still open: move auth, release, and handbook into `ops.mk` (not done here).
-[ ] [bed] **bed** — `tui`, `venv`, `prod`. Makefile 341 lines.
+[x] [bed] **bed** (`707e5ab`) — `deploy-venv` (`tui` → `venv`) failed on every run:
+    `PREPARE_BUILD` wrote `build.stale.$` (Make reduced `$$` to `$`), the rename
+    failed silently under `|| true`, and the chmod then hit EPERM on
+    `bbsengine6/py/build`. Fixed with `$$$$` and a hard-fail rename; `test_deploy_bed_tui.py`
+    now passes (9/9). Left in place: `deploy-prod` (sudo umbrella, `install`) and
+    `deploy`/`deploy-venv` names, which deploytool pins. Still open: the `ops.mk` split.
+    Leftover `bbsengine6/py/build.stale.$` (owned by `jam`) needs removing by `jam`.
 [x] [csn] **casino** (`10d5c6e`) — `stage` (local www build) and `prod`
     (stage + push) added; `deploy-www` is an alias to `prod`. Same
     commands as before.
