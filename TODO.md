@@ -92,11 +92,20 @@ item (for example, "implement zd6").
       A TestPyPI token is needed before `make testpypi` can run.
     - Blocking before first real upload: confirm `deploytool` is free on
       PyPI. Upload targets also require `PYPI_CONFIRM=1`.
+    - Shape and opt-in rules are pinned by `tests/test_deploy_deploytool_subs.py`.
+    - Bare `deploy deploytool` is now ambiguous (`prod` counts toward it).
+      Callers must name a sub.
     - `twine check` warns: this package has no README and no long
       description, so the PyPI page would be empty. Add a README before
       the first upload.
 [ ] [emp] **empyre** — bare `make deploy`. Makefile 31 lines.
-[ ] [gdn] **getdate_next** — `tui`. Makefile 177 lines.
+[x] [gdn] **getdate_next** (`f3f2b98`, `23e5134` on `prep-pypi`) — `tui`
+    (`deploy-tui`, `GETDATE_SOURCE=local|pypi|<spec>`), `prod`-free; `pypi` and
+    `testpypi` are opt-in (`PYPI_CONFIRM=1`, `TWINE_*` env). `repo` publishes to
+    `$(REPO_DEST)` only. No hard-coded host paths. Removed the `venv` alias
+    (`tui` runs `deploy-tui`). Dependency on `getdate-next` in
+    `bbsengine6/py/pyproject.toml` is kept on purpose. Not yet pushed or merged
+    from `prep-pypi`. Name check on PyPI still pending before any `pypi` upload.
 [ ] [lrt] **letteredolive** — bare `make deploy`. Makefile 40 lines.
 [ ] [mcf] **mistermcfeely** — `TARGETS` is `tui`, `prod`; both have rules
     (`deploy-tui`, `deploy-prod`). `VENV_LAYOUT` is `VENV_USER` for now; the
@@ -142,9 +151,12 @@ Nothing here is added to `lib.py` yet.
 [ ] [zdl] **zoidlan** (`git@github.com:jonez734/zoidlan.git`) — no Makefile.
     Needs one before it can be deployed.
 
-Known pre-existing test failures (not caused by this work, 7 total):
-bbsengine6 engine/www pins, `bed` `deploy-tui`, mistermcfeely wheel
-packages. Run with `PYTHONPATH=src python -m pytest tests`.
+Known pre-existing test failures (6 total, not caused by this work):
+bbsengine6 engine/www pins (5: `test_deploy_bbsengine6_engine.py` x2,
+`test_deploy_bbsengine6_www.py` x3) and mistermcfeely wheel packages
+(`test_deploy_shadow_install.py::test_mistermcfeely_declares_wheel_packages`).
+The `bed` `deploy-tui` item passes now. Run with
+`PYTHONPATH=src python -m pytest tests`.
 
 Sister projects under `/home/opencode/data/work/` (e.g. `bed/`,
 `bbsengine6/`, `casino/`) are siblings of `deploytool/` in the
