@@ -7,6 +7,16 @@ releases bump the patch). Dates are the day the commit landed on
 
 ## [Unreleased]
 
+### Changed
+- **teos target names.** `MAKE_TARGET_ALIASES[("teos","prod")]` and the new
+  `("teos","www")` now map to `prod` (was `deploy-www`). The teos `deploy` and
+  `deploy-www` aliases were removed from `teos/Makefile`. `teos.engine`
+  (`deploy-engine`) is unchanged.
+- **Makefile simplification (`stage` / `prod` shape).** Applied to teos, casino,
+  zoidoffice (`deploy-www` no longer fails on the missing `repo` prerequisite),
+  asimov, bbsengine6, and zoid6. Subs and the `deploy-*` names deploytool pins
+  are unchanged. See `SPECS.md` §3.3.
+
 ### Added
 - **`bbsengine6.prod` sub-target.** New sub on `TARGETS["bbsengine6"]`
   that runs the engine-library umbrella deploy (`bbsengine6/Makefile

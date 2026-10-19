@@ -312,13 +312,13 @@ in the final order.
 
 ### 3.2 `prod` opt-in
 
-`prod` is a sudo-umbrella install for `bed`, `zoid6`, and
-`mistermcfeely` and must not run by default. The drop gate
-(`lib.py:362`) keeps `prod` out of the final order unless the
-caller named it explicitly (`deploy bed.prod`,
-`deploy mistermcfeely.prod`) or a transitive explicit dep
-named it. Bare-base invocation never pulls in `prod` because it
-never auto-expands (§2.2) — callers must name `prod` to opt in.
+`prod` is a sudo-umbrella install for `bed` and `mistermcfeely` and
+must not run by default. The drop gate (`lib.py:362`) keeps `prod`
+out of the final order unless the caller named it explicitly
+(`deploy bed.prod`, `deploy mistermcfeely.prod`) or a transitive
+explicit dep named it. Bare-base invocation never pulls in `prod`
+because it never auto-expands (§2.2) — callers must name `prod` to
+opt in.
 
 For `mistermcfeely` specifically, the `prod` sub-target is the
 only one that uses `sudo`. The `tui` sub-target is operator-side
@@ -328,6 +328,30 @@ the cross-project PEP 660 editable-shadow precheck and
 verify-install macros can run from operator context without
 needing `sudo` to query the target venv's dist-info. See §5.1
 for the tui/prod shape contract.
+
+`zoid6.prod` is the exception to the sudo rule: it maps to
+`deploy-prod` (the FHS install), but zoid6's web deploy is `zoid6.www`.
+
+### 3.3 `stage` / `prod` shape (Makefile contract)
+
+Deploy-chain Makefiles follow one shape, so every project can be read
+the same way:
+
+- `stage` builds the deployable tree locally. It never pushes to a
+  remote host.
+- `prod` runs `stage`, then pushes to the target host. It is the only
+  target that writes to another machine.
+- Named aliases that deploytool calls are kept as thin wrappers. They
+  add no logic: `deploy`, `deploy-www`, and similar names point at
+  `prod` or `stage`.
+
+Targets deploytool pins by name (`deploy-tui`, `deploy-engine`,
+`shared`, `deploy-prod`, and the bbsengine6 `deploy-*` wrappers) keep
+their names regardless of this shape.
+
+Current status of each project is tracked in `TODO.md` ("Makefile
+simplification"). Ops-only targets (FHS install, auth install, daemon
+control) are moving to an `ops.mk` include and are not part of `prod`.
 
 ## 4. Sub-targets
 

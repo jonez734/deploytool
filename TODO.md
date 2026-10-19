@@ -57,12 +57,13 @@ item (for example, "implement zd6").
     install/release rules, and the `net/` clean call.
 [ ] [atl] **atlas** — no TARGETS (bare `make deploy`). Makefile 93 lines.
 [ ] [bku] **backuptools** — `www`, `tui`. Makefile 69 lines.
-[ ] [bbs] **bbsengine6** — `tui`, `wwworg`, `wwwcom`, `prod`, `handbook`,
-    `handbook-prod`, `engine-stage`, `engine-prod`, auth targets.
-    Still has `prod` (line 127) and `deploy` (line 286) as separate
-    umbrellas, the engine/handbook/release/auth sections inline. Plan:
-    collapse to `stage`/`prod`, move auth, release, and handbook into
-    `ops.mk`. Makefile 410 lines.
+[x] [bbs] **bbsengine6** — `stage` (local engine/skin/php/smarty) and `prod`
+    (stage + vhost `/engine/` push + library push with the delete precheck +
+    markdown). `deploy` is an alias to `prod`. The old `prod` (engine +
+    markdown) is gone; its markdown step now runs inside `prod`. Removed the
+    duplicate `engine stage` that the umbrella ran twice. Subs `wwworg`,
+    `wwwcom`, `handbook*`, `engine-*`, auth, and `deploy-tui` are unchanged.
+    Still open: move auth, release, and handbook into `ops.mk` (not done here).
 [ ] [bed] **bed** — `tui`, `venv`, `prod`. Makefile 341 lines.
 [x] [csn] **casino** (`10d5c6e`) — `stage` (local www build) and `prod`
     (stage + push) added; `deploy-www` is an alias to `prod`. Same
@@ -78,11 +79,12 @@ item (for example, "implement zd6").
 [x] [teo] **teos** (`dc7e248`) — `stage` and `prod` are the real targets;
     `deploy`, `deploy-www`, `deploy-engine` kept as aliases until
     `lib.py` is updated. Makefile 47 lines.
-[ ] [zd6] **zoid6** — `www`, `tui`, `prod`, `shared`. Still has `prod` (line 35),
-    `deploy` (line 70), `deploy-prod` (FHS umbrella), and the install-user
-    / daemon machinery inline. Plan: move FHS, user-mode, and
-    PREPARE_BUILD into `ops.mk`; remove the `--dry-run` rsync from the
-    `markdown` target. Makefile 111 lines.
+[x] [zd6] **zoid6** — `prod` (stage + push zoid6 tree and shared chrome), `stage`
+    (local), `shared`, `deploy` (alias to `prod`), `deploy-www`, `deploy-tui`,
+    `deploy-prod` (sudo FHS install, kept as-is). Removed the `--dry-run` rsync
+    from `markdown`; removed the duplicate php stage; removed the `art` step in
+    `shared/skin` (no such directory; its `-` prefix hid the failure). Still open:
+    move FHS / user-mode / PREPARE_BUILD into `ops.mk` (not done here).
 [x] [zof] **zoidoffice** (`7df8087`) — `deploy-www` failed with "No rule to
     make target 'repo'" because `repo` is defined only in `src/`. Now runs
     build once, then `$(MAKE) -C src repo`, then `rename-sdist sign`.
