@@ -196,9 +196,9 @@ CONDITIONAL_DEPENDENCIES = {
         # produce identical topo orders under --with-deps. The user-
         # facing difference is intent: `www` says "I want the teos vhost
         # deployed"; `prod` says "I want the whole teos stack landed on
-        # merlin". Today they alias to the same make target (the
-        # `deploy-www:` rule at teos/Makefile:30); future evolution
-        # could split them if teos gains a vhost-only deploy.
+        # merlin". Today they alias to the same make target (`prod`
+        # in teos/Makefile); future evolution could split them if
+        # teos gains a vhost-only deploy.
         "prod": [
             ("bbsengine6", "prod"),
             ("zoid6", "shared"),
@@ -210,10 +210,8 @@ CONDITIONAL_DEPENDENCIES = {
 TARGETS = {
     "zoid6": ["www", "tui", "prod", "shared"],
     # `prod` (added 2026-09-29) — the full teos stack. Aliased via
-    # MAKE_TARGET_ALIASES[("teos","prod")] = "deploy-www" so the
-    # user-facing sub name is `prod` while the make target stays
-    # the existing `deploy-www:` rule at teos/Makefile:30 (blurbs +
-    # `make -C www prod` + rsync + templates_c chmod). Under
+    # MAKE_TARGET_ALIASES[("teos","prod")] = "prod" (the `prod:` rule
+    # in teos/Makefile: stage + rsync + templates_c). Under
     # `--with-deps teos.prod` the CONDITIONAL_DEPENDENCIES['teos']['prod']
     # entry walks bbsengine6.prod (engine library) + zoid6.shared
     # (shared chrome) + teos.engine (engine install) before teos.prod,
@@ -276,10 +274,11 @@ MAKE_TARGET_ALIASES = {
     # follow the `deploy-<sub>` shape. bbsengine6.prod maps to the
     # existing `deploy:` rule at bbsengine6/Makefile:286 (engine +
     # skin + php + smarty stage+prod push); teos.prod maps to the
-    # existing `deploy-www:` rule at teos/Makefile:30 (blurbs + www
-    # prod + rsync + templates_c chmod).
+    # `prod:` rule in teos/Makefile (stage, then push + templates_c).
     ("bbsengine6", "prod"): "deploy",
-    ("teos", "prod"): "deploy-www",
+    ("teos", "prod"): "prod",
+    # teos.www is the vhost deploy: same target as teos.prod.
+    ("teos", "www"): "prod",
 }
 
 
