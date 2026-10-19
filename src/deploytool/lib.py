@@ -85,6 +85,7 @@ VENV_LAYOUT = {
     "zoid6": "/var/lib/zoid6/venv",
     "bed": "/var/lib/bed/venv",
     "mistermcfeely": VENV_USER,
+    "asimov": VENV_USER,
     "bbsengine6": VENV_USER,
     "teos": "/var/lib/zoid6/venv",
     "murdermotel": "/var/lib/zoid6/venv",
@@ -219,7 +220,9 @@ TARGETS = {
     # + zoid6/shared + teos/www. Slot between `www` and `tui` so the
     # two prod-shaped deploys stay adjacent.
     "teos": ["www", "prod", "tui", "engine"],
-    "achilles": ["www", "tui"],
+    # achilles has no deploy-tui rule in its Makefile (only deploy-www and
+    # the bare deploy: www alias), so tui is not advertised until one exists.
+    "achilles": ["www"],
     "casino": ["tui", "www"],
     "article2": ["www", "tui"],
     "backuptools": ["www", "tui"],

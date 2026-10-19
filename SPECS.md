@@ -364,7 +364,11 @@ target." Project records in `TARGETS` look like:
 "bed":           ["tui", "venv", "prod"],
 "getdate_next":  ["tui"],
 "mistermcfeely": ["tui", "prod"],
+"achilles":      ["www"],
 ```
+
+`asimov` has no `TARGETS` entry on purpose: it is the bare-base example
+pinned by `test_deploy_with_deps.py`, and runs only the bare `make deploy`.
 
 Bare-base invocation semantics (see `lib.resolve` lines
 `lib.py:274-356`):

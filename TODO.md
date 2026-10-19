@@ -50,11 +50,17 @@ item (for example, "implement zd6").
 
 ### Packages
 
-[ ] [ach] **achilles** — `www`, `tui`. Makefile 64 lines.
+[ ] [ach] **achilles** — `TARGETS` is now `www` only. Its Makefile has no
+    `deploy-tui` rule, so `achilles.tui` failed ("No rule to make target
+    'deploy-tui'"); `tui` is removed from `TARGETS` until one exists. Still
+    open: `VENV_LAYOUT["achilles"]` points at `/var/lib/zoid6/venv` (see the
+    VENV_LAYOUT entries below). Makefile 64 lines.
 [ ] [art] **article2** (`yummyjam/article2`) — `www`, `tui`. Makefile 150 lines.
 [x] [asi] **asimov** (`2bf644e`) — `deploy` no longer runs `build`; `prod`
     stages then pushes once; removed the missing `js/` step, dead css
-    install/release rules, and the `net/` clean call.
+    install/release rules, and the `net/` clean call. Stays bare-base (no
+    `TARGETS` entry) on purpose: `test_deploy_with_deps.py` pins it as the
+    bare-`make deploy` example. Added `VENV_LAYOUT["asimov"] = VENV_USER`.
 [ ] [atl] **atlas** — no TARGETS (bare `make deploy`). Makefile 93 lines.
 [ ] [bku] **backuptools** — `www`, `tui`. Makefile 69 lines.
 [x] [bbs] **bbsengine6** — `stage` (local engine/skin/php/smarty) and `prod`
@@ -74,7 +80,12 @@ item (for example, "implement zd6").
 [ ] [emp] **empyre** — bare `make deploy`. Makefile 31 lines.
 [ ] [gdn] **getdate_next** — `tui`. Makefile 177 lines.
 [ ] [lrt] **letteredolive** — bare `make deploy`. Makefile 40 lines.
-[ ] [mcf] **mistermcfeely** — `tui`, `prod`. Makefile 375 lines.
+[ ] [mcf] **mistermcfeely** — `TARGETS` is `tui`, `prod`; both have rules
+    (`deploy-tui`, `deploy-prod`). `VENV_LAYOUT` is `VENV_USER` for now; the
+    per-service venv move is tracked in `mistermcfeely/TODO.md`. Still open:
+    `prod` is a sudo umbrella and `Makefile` is 375 lines with ops targets
+    inline (move to `ops.mk`). Its test wheel-package pin fails
+    (`test_mistermcfeely_declares_wheel_packages`), pre-existing.
 [ ] [mdr] **murdermotel** — bare `make deploy`. Makefile 35 lines.
 [x] [teo] **teos** (`dc7e248`) — `stage` and `prod` are the real targets;
     `deploy`, `deploy-www`, `deploy-engine` kept as aliases until
