@@ -23,34 +23,61 @@ launch event:
 
 ## Makefile simplification (2026-10-18)
 
-Goal: deploy chain Makefiles use only `stage` and `prod`, with ops
-targets split out. Projects listed in order; the rest follow once
-teos, bbsengine6, and zoid6 are done.
+Goal: every package deploytool supports has a deploy chain made of
+`stage` and `prod`, with ops targets (FHS install, auth, release,
+daemon control) split into `ops.mk`. Packages are listed in the order
+deploytool's `DEPENDENCIES` declares them.
 
-[x] **teos** (`dc7e248`) — `stage` and `prod` are the real targets;
-    `deploy`, `deploy-www`, `deploy-engine` kept as aliases until
-    `lib.py` is updated.
+Rule for all Makefiles: comments go above the rule, never inside a
+recipe (tab-indented `#` lines are passed to the shell and show up in
+`make -n` output).
+
+### Cross-cutting
+
+[x] **Move recipe comments** (`9e49dc2`, zoid6) — only `zoid6/src/Makefile`
+    had recipe comments (32 lines). No recipe logic changed.
 
 [x] **wwworg alias** (`d0fce40`) — `SUB_ALIASES` in `lib.py`;
     `deploy wwworg` expands to `bbsengine6.wwworg`.
 
-[x] **Move recipe comments** (`9e49dc2`) — tab-indented `#` lines
-    inside recipes moved above their rules. Only `zoid6/src/Makefile`
-    had any (32 lines). Make passed them to the shell and printed them
-    in `make -n` output. No recipe logic changed; dry-run output is
-    unchanged apart from the removed comment echoes.
-    - Rule for new Makefiles: comments go above the rule, never inside
-      the recipe.
-
-[ ] **bbsengine6** — collapse `prod`/`deploy`/`deploy-prod` names;
-    move auth install, release, handbook into `ops.mk`.
-
-[ ] **zoid6** — move FHS, user-mode, and PREPARE_BUILD machinery to
-    `ops.mk`; remove the `--dry-run` rsync from the `markdown` target.
-
 [ ] **deploytool `lib.py`** — switch `TARGETS`, `MAKE_TARGET_ALIASES`,
     and `CONDITIONAL_DEPENDENCIES` to the new target names, then drop
-    the compatibility aliases in teos.
+    the compatibility aliases (teos `deploy`, `deploy-www`, `deploy-engine`).
+
+### Packages
+
+[ ] **achilles** — `www`, `tui`. Makefile 64 lines.
+[ ] **article2** (`yummyjam/article2`) — `www`, `tui`. Makefile 150 lines.
+[x] **asimov** (`2bf644e`) — `deploy` no longer runs `build`; `prod`
+    stages then pushes once; removed the missing `js/` step, dead css
+    install/release rules, and the `net/` clean call.
+[ ] **atlas** — no TARGETS (bare `make deploy`). Makefile 93 lines.
+[ ] **backuptools** — `www`, `tui`. Makefile 69 lines.
+[ ] **bbsengine6** — `tui`, `wwworg`, `wwwcom`, `prod`, `handbook`,
+    `handbook-prod`, `engine-stage`, `engine-prod`, auth targets.
+    Still has `prod` (line 127) and `deploy` (line 286) as separate
+    umbrellas, the engine/handbook/release/auth sections inline. Plan:
+    collapse to `stage`/`prod`, move auth, release, and handbook into
+    `ops.mk`. Makefile 410 lines.
+[ ] **bed** — `tui`, `venv`, `prod`. Makefile 341 lines.
+[ ] **casino** — `tui`, `www`. Makefile 280 lines.
+[ ] **deploytool** — `tui` only. Its Makefile is the packaging target
+    (`help`, `version`, `build`, install/test/release). Review whether
+    it needs `stage`/`prod` or stays as-is. Makefile 127 lines.
+[ ] **empyre** — bare `make deploy`. Makefile 31 lines.
+[ ] **getdate_next** — `tui`. Makefile 177 lines.
+[ ] **letteredolive** — bare `make deploy`. Makefile 40 lines.
+[ ] **mistermcfeely** — `tui`, `prod`. Makefile 375 lines.
+[ ] **murdermotel** — bare `make deploy`. Makefile 35 lines.
+[x] **teos** (`dc7e248`) — `stage` and `prod` are the real targets;
+    `deploy`, `deploy-www`, `deploy-engine` kept as aliases until
+    `lib.py` is updated. Makefile 47 lines.
+[ ] **zoid6** — `www`, `tui`, `prod`, `shared`. Still has `prod` (line 35),
+    `deploy` (line 70), `deploy-prod` (FHS umbrella), and the install-user
+    / daemon machinery inline. Plan: move FHS, user-mode, and
+    PREPARE_BUILD into `ops.mk`; remove the `--dry-run` rsync from the
+    `markdown` target. Makefile 111 lines.
+[ ] **zoidoffice** — `tui`, `www`. Makefile 122 lines.
 
 Known pre-existing test failures (not caused by this work, 7 total):
 bbsengine6 engine/www pins, `bed` `deploy-tui`, mistermcfeely wheel
