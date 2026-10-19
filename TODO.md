@@ -107,12 +107,11 @@ item (for example, "implement zd6").
     `bbsengine6/py/pyproject.toml` is kept on purpose. Not yet pushed or merged
     from `prep-pypi`. Name check on PyPI still pending before any `pypi` upload.
 [ ] [lrt] **letteredolive** — bare `make deploy`. Makefile 40 lines.
-[ ] [mcf] **mistermcfeely** — `TARGETS` is `tui`, `prod`; both have rules
+[x] [mcf] **mistermcfeely** — `TARGETS` is `tui`, `prod`; both have rules
     (`deploy-tui`, `deploy-prod`). `VENV_LAYOUT` is `VENV_USER` for now; the
-    per-service venv move is tracked in `mistermcfeely/TODO.md`. Still open:
-    `prod` is a sudo umbrella and `Makefile` is 375 lines with ops targets
-    inline (move to `ops.mk`). Its test wheel-package pin fails
-    (`test_mistermcfeely_declares_wheel_packages`), pre-existing.
+    per-service venv move is tracked in `mistermcfeely/TODO.md`. Done: sudo/FHS
+    targets moved to `mistermcfeely/ops.mk`; `stage` added (`deploy-tui` kept as
+    alias); `WHEEL_PACKAGES` pin fixed to `bbsengine6 $(DIST_NAME)`.
 [ ] [mdr] **murdermotel** — bare `make deploy`. Makefile 35 lines.
 [x] [teo] **teos** (`dc7e248`) — `stage` and `prod` are the real targets;
     `deploy`, `deploy-www`, `deploy-engine` kept as aliases until
@@ -151,10 +150,9 @@ Nothing here is added to `lib.py` yet.
 [ ] [zdl] **zoidlan** (`git@github.com:jonez734/zoidlan.git`) — no Makefile.
     Needs one before it can be deployed.
 
-Known pre-existing test failures (6 total, not caused by this work):
+Known pre-existing test failures (5 total, not caused by this work):
 bbsengine6 engine/www pins (5: `test_deploy_bbsengine6_engine.py` x2,
-`test_deploy_bbsengine6_www.py` x3) and mistermcfeely wheel packages
-(`test_deploy_shadow_install.py::test_mistermcfeely_declares_wheel_packages`).
+`test_deploy_bbsengine6_www.py` x3).
 The `bed` `deploy-tui` item passes now. Run with
 `PYTHONPATH=src python -m pytest tests`.
 

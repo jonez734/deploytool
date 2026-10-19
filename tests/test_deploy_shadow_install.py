@@ -305,8 +305,8 @@ def _read_text(path):
 
 
 def test_mistermcfeely_declares_wheel_packages(mistermcfeely_makefile):
-    """mistermcfeely/Makefile declares `WHEEL_PACKAGES := bbsengine6 mistermcfeely`
-    at the top so precheck-editable and verify-install iterate over
+    """mistermcfeely/Makefile declares `WHEEL_PACKAGES := bbsengine6 $(DIST_NAME)`
+    (DIST_NAME = postoffice, the pyproject distribution name) at the top so precheck-editable and verify-install iterate over
     every package whose wheel lands in $(OUTDIR). Without this
     variable, the macros have no list to loop over and the
     multi-package batch install is unchecked.
@@ -316,13 +316,13 @@ def test_mistermcfeely_declares_wheel_packages(mistermcfeely_makefile):
         "mistermcfeely/Makefile is missing WHEEL_PACKAGES. The "
         "precheck-editable and verify-install macros iterate over "
         "this list so a single macro covers the batch install "
-        "(bbsengine6 wheel + mistermcfeely wheel). Add "
-        "`WHEEL_PACKAGES := bbsengine6 mistermcfeely` to the "
+        "(bbsengine6 wheel + postoffice wheel). Add "
+        "`WHEEL_PACKAGES := bbsengine6 $(DIST_NAME)` to the "
         "variable block at the top of the Makefile."
     )
-    assert "WHEEL_PACKAGES := bbsengine6 mistermcfeely" in text, (
+    assert "WHEEL_PACKAGES := bbsengine6 $(DIST_NAME)" in text, (
         "WHEEL_PACKAGES is declared but doesn't list both "
-        "bbsengine6 and mistermcfeely. The batch install lands "
+        "bbsengine6 and $(DIST_NAME) (postoffice). The batch install lands "
         "both wheels into the operator's active venv, so both must "
         "be precheck'd and verify'd."
     )

@@ -8,6 +8,15 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Changed
+- **mistermcfeely Makefile split.** Sudo/FHS targets (sysusers, tmpfiles,
+  systemd, etc, restorecon, and their uninstall counterparts) moved to
+  `mistermcfeely/ops.mk`, included from the Makefile. New `stage` target
+  (no-sudo build + operator-venv install) is canonical; `deploy-tui` is kept
+  as an alias so `TARGETS["mistermcfeely"] = ["tui", "prod"]` is
+  unchanged. `WHEEL_PACKAGES` pin is `bbsengine6 $(DIST_NAME)` (distribution
+  is `postoffice`, not `mistermcfeely`); `test_deploy_shadow_install.py` pin
+  updated to match. Fixes the previously failing
+  `test_mistermcfeely_declares_wheel_packages`.
 - **teos target names.** `MAKE_TARGET_ALIASES[("teos","prod")]` and the new
   `("teos","www")` now map to `prod` (was `deploy-www`). The teos `deploy` and
   `deploy-www` aliases were removed from `teos/Makefile`. `teos.engine`
