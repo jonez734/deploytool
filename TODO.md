@@ -21,6 +21,41 @@ launch event:
   standalone `.git/` is local to that path; the parent's tree
   ignores it.
 
+## Makefile simplification (2026-10-18)
+
+Goal: deploy chain Makefiles use only `stage` and `prod`, with ops
+targets split out. Projects listed in order; the rest follow once
+teos, bbsengine6, and zoid6 are done.
+
+[x] **teos** (`dc7e248`) — `stage` and `prod` are the real targets;
+    `deploy`, `deploy-www`, `deploy-engine` kept as aliases until
+    `lib.py` is updated.
+
+[x] **wwworg alias** (`d0fce40`) — `SUB_ALIASES` in `lib.py`;
+    `deploy wwworg` expands to `bbsengine6.wwworg`.
+
+[x] **Move recipe comments** (`9e49dc2`) — tab-indented `#` lines
+    inside recipes moved above their rules. Only `zoid6/src/Makefile`
+    had any (32 lines). Make passed them to the shell and printed them
+    in `make -n` output. No recipe logic changed; dry-run output is
+    unchanged apart from the removed comment echoes.
+    - Rule for new Makefiles: comments go above the rule, never inside
+      the recipe.
+
+[ ] **bbsengine6** — collapse `prod`/`deploy`/`deploy-prod` names;
+    move auth install, release, handbook into `ops.mk`.
+
+[ ] **zoid6** — move FHS, user-mode, and PREPARE_BUILD machinery to
+    `ops.mk`; remove the `--dry-run` rsync from the `markdown` target.
+
+[ ] **deploytool `lib.py`** — switch `TARGETS`, `MAKE_TARGET_ALIASES`,
+    and `CONDITIONAL_DEPENDENCIES` to the new target names, then drop
+    the compatibility aliases in teos.
+
+Known pre-existing test failures (not caused by this work, 7 total):
+bbsengine6 engine/www pins, `bed` `deploy-tui`, mistermcfeely wheel
+packages. Run with `PYTHONPATH=src python -m pytest tests`.
+
 Sister projects under `/home/opencode/data/work/` (e.g. `bed/`,
 `bbsengine6/`, `casino/`) are siblings of `deploytool/` in the
 same monorepo on disk; they each have their own publish workflow
