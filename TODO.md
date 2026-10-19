@@ -80,9 +80,21 @@ item (for example, "implement zd6").
 [x] [csn] **casino** (`10d5c6e`) — `stage` (local www build) and `prod`
     (stage + push) added; `deploy-www` is an alias to `prod`. Same
     commands as before.
-[ ] [dtl] **deploytool** — `tui` only. Its Makefile is the packaging target
-    (`help`, `version`, `build`, install/test/release). Review whether
-    it needs `stage`/`prod` or stays as-is. Makefile 127 lines.
+[x] [dtl] **deploytool** — `tui` (local install into `$VIRTUAL_ENV`, with
+    `VERIFY_INSTALL`), `prod` (`tui` then `repo`: rsync to `$(REPO_DEST)`,
+    default `/srv/repo/deploytool/`), `stage`, `check`, `repo`, `pypi`,
+    `testpypi`. `prod`, `pypi`, and `testpypi` are opt-in: never auto-expanded
+    by a dependency walk, and `pypi`/`testpypi` never count toward a bare-name
+    auto-pick. A bare `deploy deploytool` is now ambiguous (lists the subs).
+    `SOURCE_BASE` reads `DEPLOYTOOL_SOURCE_BASE`.
+    - Credentials: `testpypi` and `pypi` read `TWINE_USERNAME=__token__` and
+      `TWINE_PASSWORD` from the environment. No token is stored in this repo.
+      A TestPyPI token is needed before `make testpypi` can run.
+    - Blocking before first real upload: confirm `deploytool` is free on
+      PyPI. Upload targets also require `PYPI_CONFIRM=1`.
+    - `twine check` warns: this package has no README and no long
+      description, so the PyPI page would be empty. Add a README before
+      the first upload.
 [ ] [emp] **empyre** — bare `make deploy`. Makefile 31 lines.
 [ ] [gdn] **getdate_next** — `tui`. Makefile 177 lines.
 [ ] [lrt] **letteredolive** — bare `make deploy`. Makefile 40 lines.

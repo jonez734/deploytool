@@ -10,7 +10,9 @@ from deploytool._version import __version__
 
 
 PACKAGENAME = "deploytool"
-SOURCE_BASE = "/home/opencode/data/work"
+# Root directory containing the project checkouts. Overridable so the
+# sysop can point deploytool elsewhere without editing this file.
+SOURCE_BASE = os.environ.get("DEPLOYTOOL_SOURCE_BASE", "/home/opencode/data/work")
 DEFAULT_HOST = "merlin"
 # Cyrus IMAP lives on a different host than the Dovecot / BBS host.
 # Used by the bbsengine6 auth install targets (which push to both
@@ -226,7 +228,10 @@ TARGETS = {
     "casino": ["tui", "www"],
     "article2": ["www", "tui"],
     "backuptools": ["www", "tui"],
-    "deploytool": ["tui"],
+    # `prod` publishes to /srv/repo/deploytool/; `pypi`/`testpypi` upload
+    # to the package indexes. All three are opt-in: none auto-expands
+    # (see the drop gate in resolve()).
+    "deploytool": ["tui", "prod", "pypi", "testpypi"],
     "zoidoffice": ["tui", "www"],
     "bed": ["tui", "venv", "prod"],
     # `prod` (added 2026-09-29) — the engine-library umbrella
@@ -243,7 +248,8 @@ TARGETS = {
     # then the engine-library deploy, then the handbook/engine-stage
     # surface at the tail.
     "bbsengine6": ["tui", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod", "install-bbsengine6-auth-helper", "install-pam-bbsengine6-on-merlin", "install-bbsengine6-everything"],
-    "getdate_next": ["tui"],
+    # `pypi`/`testpypi` upload to package indexes; opt-in (see OPT_IN_SUBS).
+    "getdate_next": ["tui", "pypi", "testpypi"],
     "mistermcfeely": ["tui", "prod"],
 }
 
@@ -270,7 +276,6 @@ TARGETS = {
 #     that resolve to the same make target don't run twice.
 MAKE_TARGET_ALIASES = {
     ("bed", "tui"): "venv",
-    ("getdate_next", "tui"): "venv",
     ("zoid6", "shared"): "shared",
     # Added 2026-09-29 — bbsengine6.prod and teos.prod are the
     # user-facing names for the two umbrella deploys that don't
@@ -287,6 +292,15 @@ MAKE_TARGET_ALIASES = {
 
 def get_targets(base):
     return TARGETS.get(base, [])
+
+
+# Subs that are never auto-expanded through a dependency walk. Each one
+# either writes to a shared host path (prod) or uploads to a package index
+# (pypi, testpypi). They run only when named explicitly.
+OPT_IN_SUBS = frozenset({"prod", "pypi", "testpypi"})
+# Subs that upload to a package index. Never counted toward a bare-name
+# auto-pick. (`prod` is excluded here on purpose; see the bare-name branch.)
+UPLOAD_SUBS = frozenset({"pypi", "testpypi"})
 
 
 def resolve_sub_prefix(sub, targets):
@@ -458,8 +472,13 @@ def resolve(projects, with_deps=False):
         targets = get_targets(base)
         if targets:
             if sub is None:
-                if len(targets) == 1:
-                    subs = list(targets)
+                # Index uploads never count toward a bare-name auto-pick, so
+                # adding pypi/testpypi does not change what `deploy <base>` does.
+                # `prod` still counts: a bare name with prod is ambiguous, as
+                # documented in CHANGELOG (mistermcfeely).
+                default_subs = [t for t in targets if t not in UPLOAD_SUBS]
+                if len(default_subs) == 1:
+                    subs = default_subs
                     explicit_subs.add((base, subs[0]))
                 else:
                     ambiguous.append((base, targets))
@@ -571,11 +590,12 @@ def resolve(projects, with_deps=False):
     # make-target level so two subs that resolve to the same `deploy-*`
     # target don't run twice. Preserve the user-facing sub name in the
     # output (the first one encountered wins). Also drop auto-expanded
-    # `prod` subs — `prod` is opt-in (sudo umbrella install).
+    # opt-in subs: `prod` (publish/sudo umbrella) and the index uploads.
+    # Uploading is never a side effect of a dependency walk.
     seen_targets = set()
     final = []
     for name, sub in deduped:
-        if sub == "prod" and (name, sub) not in explicit_subs:
+        if sub in OPT_IN_SUBS and (name, sub) not in explicit_subs:
             continue
         resolved = MAKE_TARGET_ALIASES.get((name, sub), sub) if sub is not None else None
         key = (name, resolved)

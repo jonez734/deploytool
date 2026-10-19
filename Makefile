@@ -1,7 +1,11 @@
 PROJECT = deploytool
 OUTDIR = dist/
-VERSION := $(shell date +%Y%m%d%H%M)
+# Pinned with ?= so sub-make invocations (tui -> build, prod -> tui) share
+# one version and the artifact names stay stable across stage and publish.
+VERSION ?= $(shell date +%Y%m%d%H%M)
 WHEEL := $(OUTDIR)$(PROJECT)-0.0.1.dev$(VERSION)-py3-none-any.whl
+# Artifact glob for this version. Publish targets upload only these files.
+ARTIFACTS = $(OUTDIR)$(PROJECT)-0.0.1.dev$(VERSION)*
 
 PYTHON ?= python3
 VENV_DIR ?= $(if $(VIRTUAL_ENV),$(VIRTUAL_ENV),.venv)
@@ -10,7 +14,15 @@ VENV_GROUP ?= $(USER)
 
 PIP ?= $(PYTHON) -m pip
 
-.PHONY: all clean build version install deploy-tui install-venv uninstall-venv test
+# Publish destination for `prod`. Overridable; empty makes `repo` refuse.
+REPO_DEST ?= /srv/repo/deploytool/
+# Upload targets refuse to run unless PYPI_CONFIRM=1 is set. Credentials
+# come from TWINE_USERNAME=__token__ and TWINE_PASSWORD in the environment.
+PYPI_CONFIRM ?=
+TESTPYPI_URL = https://test.pypi.org/legacy/
+
+.PHONY: all clean build stage check version install deploy-tui deploy prod repo \
+	install-venv uninstall-venv test pypi testpypi require-repo-dest verify-tokens
 
 all: help
 
@@ -38,14 +50,19 @@ version:
 build: version
 	cd src && $(PYTHON) -m build --outdir ../$(OUTDIR)
 
+# Build artifacts only. Used by every install and publish path.
+stage: build
+
+# Validate the built artifacts with twine before any publish.
+check: stage
+	$(PYTHON) -m twine check $(ARTIFACTS)*
+
 # DEPLOY_EDITABLE is set by `deploytool --editable`. When unset,
 # deploy-tui installs deploytool from the freshly-built wheel in
 # $(OUTDIR). When set, it installs editable from the source tree.
-# Note: deploytool's $(OUTDIR) is `dist/` (local), not
-# `/srv/repo/deploytool/` — deploytool is a standalone repo
-# and publishes to PyPI from dist/, not to the per-project
-# /srv/repo/ OUTDIR that Phase 0 introduced for the other
-# projects.
+# $(OUTDIR) is the local `dist/`; `prod` publishes a copy to
+# $(REPO_DEST) (default /srv/repo/deploytool/) and `pypi`/`testpypi`
+# upload to the package indexes. Nothing here uploads implicitly.
 DEPLOY_EDITABLE ?=
 
 # DEPLOY_UPGRADE is set by `deploytool --upgrade` (default true) and
@@ -109,7 +126,42 @@ VERIFY_INSTALL = \
 	fi; \
 	echo "verify-install OK: pip show reports $$INSTALLED"
 
+# Operator-side install into the active venv. Default `deploy` target.
 deploy-tui: install
+
+deploy: deploy-tui
+
+# Publish: install into the venv (tui), then copy this version's artifacts
+# to $(REPO_DEST). The only target that writes outside dist/ and the venv.
+prod: deploy-tui repo
+
+# Refuse before any build work when REPO_DEST is unset.
+require-repo-dest:
+	@test -n "$(REPO_DEST)" || { echo "repo: REPO_DEST is not set; nothing published" >&2; exit 1; }
+
+# rsync this version's artifacts to $(REPO_DEST). Only target that touches
+# /srv/repo, and it runs only from `prod`.
+repo: require-repo-dest stage
+	rsync -av $(ARTIFACTS)* $(REPO_DEST)
+
+# Credential and confirmation guard for index uploads.
+verify-tokens:
+	@test -n "$$TWINE_PASSWORD" || { \
+		echo "Error: TWINE_PASSWORD is not set. Set TWINE_USERNAME=__token__ and TWINE_PASSWORD=<token>." >&2; exit 1; }
+	@test "$${TWINE_USERNAME:-}" = "__token__" || { \
+		echo "Error: TWINE_USERNAME must be __token__ for token auth." >&2; exit 1; }
+
+# Upload to TestPyPI. Run this before `pypi`.
+testpypi: check
+	@test "$(PYPI_CONFIRM)" = "1" || { echo "testpypi: set PYPI_CONFIRM=1 to upload" >&2; exit 1; }
+	@$(MAKE) --no-print-directory verify-tokens
+	$(PYTHON) -m twine upload --repository-url $(TESTPYPI_URL) $(ARTIFACTS)*
+
+# Upload to PyPI. Requires PYPI_CONFIRM=1.
+pypi: check
+	@test "$(PYPI_CONFIRM)" = "1" || { echo "pypi: set PYPI_CONFIRM=1 to upload" >&2; exit 1; }
+	@$(MAKE) --no-print-directory verify-tokens
+	$(PYTHON) -m twine upload $(ARTIFACTS)*
 
 test:
 	$(PYTHON) -m pytest tests/

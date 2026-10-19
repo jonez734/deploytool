@@ -39,13 +39,24 @@ def test_getdate_next_tui_resolves_to_getdate_next_with_tui_sub():
     """`deploy getdate_next.tui` resolves to `getdate_next` (tui).
 
     `getdate_next` has no transitive dependencies (`DEPENDENCIES`
-    entry is `[]`); the `tui` sub-target is routed to the `venv`
-    make target via `MAKE_TARGET_ALIASES`, same shape as `bed`'s
-    `tui` -> `venv` mapping.
+    entry is `[]`). Its `tui` sub has no `MAKE_TARGET_ALIASES` entry,
+    so it runs the default `deploy-tui` make target, which the
+    Makefile defines directly.
     """
     order = deploytool.lib.resolve(["getdate_next.tui"])
     assert order == [("getdate_next", "tui")]
-    assert deploytool.lib.MAKE_TARGET_ALIASES[("getdate_next", "tui")] == "venv"
+    assert ("getdate_next", "tui") not in deploytool.lib.MAKE_TARGET_ALIASES
+
+
+def test_getdate_next_pypi_subs_are_opt_in():
+    """`pypi`/`testpypi` upload to a package index, so they must never
+    be pulled in by a dependency walk or a bare name. They run only
+    when named explicitly."""
+    assert deploytool.lib.resolve(["getdate_next.pypi"]) == [("getdate_next", "pypi")]
+    assert deploytool.lib.resolve(["getdate_next.testpypi"]) == [
+        ("getdate_next", "testpypi")
+    ]
+    assert {"pypi", "testpypi", "prod"} <= deploytool.lib.OPT_IN_SUBS
 
 
 def test_prepare_build_renames_foreign_owned_build_dir():
