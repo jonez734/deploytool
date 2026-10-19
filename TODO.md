@@ -43,9 +43,10 @@ item (for example, "implement zd6").
 [x] [wwa] **wwworg alias** (`d0fce40`) — `SUB_ALIASES` in `lib.py`;
     `deploy wwworg` expands to `bbsengine6.wwworg`.
 
-[ ] [lib] **deploytool `lib.py`** — switch `TARGETS`, `MAKE_TARGET_ALIASES`,
-    and `CONDITIONAL_DEPENDENCIES` to the new target names, then drop
-    the compatibility aliases (teos `deploy`, `deploy-www`, `deploy-engine`).
+[x] [lib] **deploytool `lib.py`** (`eceac29`) — teos `prod` and `www` map to
+    the `prod` target; teos `deploy` and `deploy-www` aliases removed
+    (`470655b`). `deploy-engine` kept: it is a separate target that
+    bbsengine6 wiring still uses.
 
 ### Packages
 
@@ -63,7 +64,9 @@ item (for example, "implement zd6").
     collapse to `stage`/`prod`, move auth, release, and handbook into
     `ops.mk`. Makefile 410 lines.
 [ ] [bed] **bed** — `tui`, `venv`, `prod`. Makefile 341 lines.
-[ ] [csn] **casino** — `tui`, `www`. Makefile 280 lines.
+[x] [csn] **casino** (`10d5c6e`) — `stage` (local www build) and `prod`
+    (stage + push) added; `deploy-www` is an alias to `prod`. Same
+    commands as before.
 [ ] [dtl] **deploytool** — `tui` only. Its Makefile is the packaging target
     (`help`, `version`, `build`, install/test/release). Review whether
     it needs `stage`/`prod` or stays as-is. Makefile 127 lines.
@@ -80,7 +83,9 @@ item (for example, "implement zd6").
     / daemon machinery inline. Plan: move FHS, user-mode, and
     PREPARE_BUILD into `ops.mk`; remove the `--dry-run` rsync from the
     `markdown` target. Makefile 111 lines.
-[ ] [zof] **zoidoffice** — `tui`, `www`. Makefile 122 lines.
+[x] [zof] **zoidoffice** (`7df8087`) — `deploy-www` failed with "No rule to
+    make target 'repo'" because `repo` is defined only in `src/`. Now runs
+    build once, then `$(MAKE) -C src repo`, then `rename-sdist sign`.
 
 Known pre-existing test failures (not caused by this work, 7 total):
 bbsengine6 engine/www pins, `bed` `deploy-tui`, mistermcfeely wheel
