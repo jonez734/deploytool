@@ -403,6 +403,14 @@ def buildargs(args=None, **kwargs):
              "to avoid the ambiguity. (default: %(default)s)",
     )
     parser.add_argument(
+        "--prefix",
+        dest="prefix",
+        default=None,
+        metavar="PATH",
+        help="venv install prefix for <project>.venv and <project>.prod (passed to make as "
+             "DEPLOY_PREFIX). Default: the project's own default (VENV_LAYOUT, or the Makefile's).",
+    )
+    parser.add_argument(
         "--upgrade",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -752,6 +760,14 @@ def run_make_deploy(args, project, sub=None):
         env["DEPLOY_UPGRADE"] = "1"
     else:
         env.pop("DEPLOY_UPGRADE", None)
+
+    # --prefix: the venv install prefix for <project>.venv / <project>.prod. Set only when the flag is
+    # given; a stale DEPLOY_PREFIX in the operator's shell is stripped so it cannot redirect a deploy.
+    prefix = getattr(args, "prefix", None)
+    if prefix:
+        env["DEPLOY_PREFIX"] = prefix
+    else:
+        env.pop("DEPLOY_PREFIX", None)
 
     if dry_run:
         io.echo(f"{{yellow}}dry-run:{{/all}} {' '.join(cmd)}")
