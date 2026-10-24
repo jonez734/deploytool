@@ -68,15 +68,16 @@ def test_bed_tui_pulls_bbsengine6_tui_not_bare_bbsengine6():
     assert ("bbsengine6", "tui") in deploytool.lib.CONDITIONAL_DEPENDENCIES["bed"]["tui"]
 
 
-def test_bed_venv_keeps_bare_bbsengine6_dep():
-    """`deploy bed.venv` does NOT pull `bbsengine6.venv` because that
-    sub-target does not exist in bbsengine6's TARGETS. It keeps the
-    unconditional bare `bbsengine6` dep from DEPENDENCIES.
+def test_bed_venv_pulls_bbsengine6_venv_not_bare_bbsengine6():
+    """`deploy bed.venv` installs the engine locally via `bbsengine6.venv`.
+
+    The bare `bbsengine6` edge ran bbsengine6's default sub (`prod`), whose rsync
+    to merlin fails under sudo. bed.venv skips that edge (BARE_DEPS_SKIPPED_FOR).
     """
     order = deploytool.lib.resolve(["bed.venv"], with_deps=True)
     bbsengine6_entries = [entry for entry in order if entry[0] == "bbsengine6"]
-    assert bbsengine6_entries == [("bbsengine6", None)], (
-        f"bed.venv should pull bare bbsengine6, got: {bbsengine6_entries}"
+    assert bbsengine6_entries == [("bbsengine6", "venv")], (
+        f"bed.venv should pull bbsengine6.venv only, got: {bbsengine6_entries}"
     )
 
 

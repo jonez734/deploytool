@@ -41,6 +41,11 @@ PROJECT_DIRS = {
     "article2": "yummyjam/article2",
 }
 
+# (project, sub) pairs whose bare DEPENDENCIES edges are NOT followed. Their explicit
+# CONDITIONAL_DEPENDENCIES edges say exactly what they need. bed.venv needs only
+# bbsengine6.venv; the bare bbsengine6 edge would run bbsengine6's default sub (prod).
+BARE_DEPS_SKIPPED_FOR = {("bed", "venv")}
+
 DEPENDENCIES = {
     "getdate_next": [],
     "bbsengine6": [],
@@ -144,6 +149,10 @@ CONDITIONAL_DEPENDENCIES = {
     },
     "bed": {
         "tui": [("bbsengine6", "tui")],
+        # bed.venv installs the engine locally via bbsengine6's venv target. The bare
+        # DEPENDENCIES["bed"] edge is skipped for venv (see BARE_DEPS_SKIPPED_FOR), so
+        # bbsengine6.prod (the merlin rsync) never runs for a bed venv install.
+        "venv": [("bbsengine6", "venv")],
     },
     # @since 2026-09-27 — `deploy teos.www` must land zoid6's shared
     # chrome (skin/tmpl/page.tmpl and friends) before teos's
@@ -242,7 +251,7 @@ TARGETS = {
     # `wwwcom` and `handbook` to keep the two website subs first,
     # then the engine-library deploy, then the handbook/engine-stage
     # surface at the tail.
-    "bbsengine6": ["tui", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod", "install-bbsengine6-auth-helper", "install-pam-bbsengine6-on-merlin", "install-bbsengine6-everything"],
+    "bbsengine6": ["tui", "venv", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod", "install-bbsengine6-auth-helper", "install-pam-bbsengine6-on-merlin", "install-bbsengine6-everything"],
     # `pypi`/`testpypi` upload to package indexes; opt-in (see OPT_IN_SUBS).
     "getdate_next": ["tui", "pypi", "testpypi"],
     "mistermcfeely": ["tui", "prod"],
@@ -279,6 +288,8 @@ MAKE_TARGET_ALIASES = {
     # skin + php + smarty stage+prod push); teos.prod maps to the
     # `prod:` rule in teos/Makefile (stage, then push + templates_c).
     ("bbsengine6", "prod"): "deploy",
+    # Local venv install (no remote). Added so bed.venv can depend on it.
+    ("bbsengine6", "venv"): "venv",
     ("teos", "prod"): "prod",
     # teos.www is the vhost deploy: same target as teos.prod.
     ("teos", "www"): "prod",
@@ -558,7 +569,8 @@ def resolve(projects, with_deps=False):
             requested_subs.setdefault(name, set()).add(sub)
             explicit_subs.add((name, sub))
         if with_deps:
-            for dep in DEPENDENCIES.get(name, []):
+            bare_deps = [] if (name, sub) in BARE_DEPS_SKIPPED_FOR else DEPENDENCIES.get(name, [])
+            for dep in bare_deps:
                 visit(dep)
             for cond_sub, extra_deps in CONDITIONAL_DEPENDENCIES.get(name, {}).items():
                 if cond_sub in requested_subs.get(name, set()):
