@@ -206,6 +206,7 @@ CONDITIONAL_DEPENDENCIES = {
 
 TARGETS = {
     "zoid6": ["www", "tui", "prod", "shared"],
+    "letteredolive": ["venv", "prod"],
     # `prod` (added 2026-09-29) — the full teos stack. Aliased via
     # MAKE_TARGET_ALIASES[("teos","prod")] = "prod" (the `prod:` rule
     # in teos/Makefile: stage + rsync + templates_c). Under

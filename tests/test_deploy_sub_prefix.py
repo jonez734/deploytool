@@ -345,38 +345,25 @@ def test_resolve_per_base_scoping_isolates_prod_prefix():
 
 
 def test_resolve_prefix_does_not_match_a_base_only_sub():
-    """A prefix that resolves in one project's TARGETS does not
-    silently apply to a project with no TARGETS entry.
+    """A sub prefix is scoped to its own project's TARGETS.
 
-    `letteredolive` is in DEPENDENCIES but has no TARGETS — it's a
-    bare-base project that runs `make deploy` directly. The
-    sub-resolution branch at `lib.py:350-351` only fires when
-    `TARGETS[base]` is truthy, so for a base with no TARGETS the
-    sub string is dropped entirely (the bare `make deploy` target
-    runs). Per-base scoping is preserved: a `.t` on `letteredolive`
-    does NOT invoke the prefix resolver (which would match `tui`
-    in other projects' TARGETS).
+    `letteredolive` declares TARGETS ["venv", "prod"]. A prefix such as `.t` must not resolve against
+    another project's `tui` (per-base scoping). It is rejected, and the error names the valid subs.
     """
+    import pytest as _pytest
     import deploytool.lib as lib
 
     original_echo = lib.io.echo
     captured = []
     lib.io.echo = lambda text, *a, **kw: captured.append(text)
     try:
-        order = lib.resolve(["letteredolive.t"], with_deps=False)
+        with _pytest.raises(SystemExit):
+            lib.resolve(["letteredolive.t"], with_deps=False)
     finally:
         lib.io.echo = original_echo
-    assert order == [("letteredolive", None)], (
-        "letteredolive has no TARGETS; the sub string is dropped and "
-        "the bare deploy runs. Per-base scoping means a sub prefix "
-        "resolves only inside the project's own TARGETS list."
-    )
-
-
-# ---------------------------------------------------------------------------
-# Multiple prefix-resolved subs in one command line
-# ---------------------------------------------------------------------------
-
+    joined = " ".join(str(c) for c in captured)
+    assert "unknown sub-target" in joined
+    assert "venv" in joined and "prod" in joined
 
 def test_resolve_multiple_prefix_subs_in_one_command():
     """Caller can mix prefix-resolved subs with full-name subs.
