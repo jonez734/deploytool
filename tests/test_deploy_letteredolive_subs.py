@@ -25,3 +25,10 @@ def test_venv_and_prod_both_accept_prefix():
     for sub in ("venv", "prod"):
         args = lib.buildargs().parse_args([f"letteredolive.{sub}", "--prefix", "/x/venv"])
         assert args.prefix == "/x/venv"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("sub,target", [("venv", "venv"), ("prod", "prod")])
+def test_letteredolive_subs_map_to_their_make_targets(sub, target):
+    """letteredolive's Makefile names its targets `venv` and `prod`, not `deploy-venv` / `deploy-prod`."""
+    assert lib.MAKE_TARGET_ALIASES.get(("letteredolive", sub)) == target

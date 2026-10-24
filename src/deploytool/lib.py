@@ -282,6 +282,8 @@ MAKE_TARGET_ALIASES = {
     ("teos", "prod"): "prod",
     # teos.www is the vhost deploy: same target as teos.prod.
     ("teos", "www"): "prod",
+    ("letteredolive", "venv"): "venv",
+    ("letteredolive", "prod"): "prod",
 }
 
 
