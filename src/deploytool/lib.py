@@ -102,7 +102,7 @@ VENV_LAYOUT = {
 
 # `bed` is pulled in only for tui targets (the tui/WebSocket wheel requires
 # bed); a www-only deploy should not force a bed rebuild.
-# Sub-targets match down the chain: casino.tui -> bed.tui -> bbsengine6.tui
+# Sub-targets match down the chain: bed.tui -> bbsengine6.tui
 # so every consumer of bbsengine6's tui build sees the same artifacts.
 # `bed.tui` aliases to `deploy-venv` via MAKE_TARGET_ALIASES, so the make
 # target is still `deploy-venv` — the sub name just keeps the topo chain
@@ -137,7 +137,6 @@ CONDITIONAL_DEPENDENCIES = {
         # effectively broken; replacing with ("bbsengine6", "prod") —
         # the new umbrella sub — fixes it.
         "www": [("bbsengine6", "prod")],
-        "tui": [("bed", "tui")],
     },
     "article2": {
         "tui": [("bbsengine6", "tui")],
@@ -229,7 +228,7 @@ TARGETS = {
     # achilles has no deploy-tui rule in its Makefile (only deploy-www and
     # the bare deploy: www alias), so tui is not advertised until one exists.
     "achilles": ["www"],
-    "casino": ["tui", "venv", "www"],
+    "casino": ["venv", "www"],
     "article2": ["www", "tui"],
     "backuptools": ["www", "tui"],
     # `prod` publishes to /srv/repo/deploytool/; `pypi`/`testpypi` upload

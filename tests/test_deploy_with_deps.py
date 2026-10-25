@@ -70,7 +70,7 @@ def test_bare_casino_with_deps_is_ambiguous(monkeypatch):
     `--with-deps` controls dep walking, not sub-target expansion.
     Bare-base invocation under `--with-deps` is still ambiguous when
     `TARGETS[casino]` has more than one entry. Caller must name the
-    subs explicitly (`deploy --with-deps casino.tui casino.www`).
+    subs explicitly (`deploy --with-deps casino.venv casino.www`).
     """
     msgs = []
     monkeypatch.setattr(
@@ -87,7 +87,7 @@ def test_bare_casino_with_deps_is_ambiguous(monkeypatch):
     assert excinfo.value.code == 1
     out = "\n".join(msgs)
     assert "casino" in out
-    assert "tui" in out
+    assert "venv" in out
     assert "www" in out
 
 
@@ -160,17 +160,17 @@ def test_bare_mistermcfeely_is_ambiguous_with_subs():
 
 
 def test_explicit_sub_no_deps_no_transitive_pull():
-    """`deploy casino.tui` with `with_deps=False` runs only casino.tui."""
-    order = deploytool.lib.resolve(["casino.tui"], with_deps=False)
-    assert order == [("casino", "tui")]
+    """`deploy casino.venv` with `with_deps=False` runs only casino.venv."""
+    order = deploytool.lib.resolve(["casino.venv"], with_deps=False)
+    assert order == [("casino", "venv")]
 
 
 def test_explicit_sub_no_deps_two_subs():
-    """`deploy casino.tui casino.www` runs both, no shared deps."""
+    """`deploy casino.venv casino.www` runs both, no shared deps."""
     order = deploytool.lib.resolve(
-        ["casino.tui", "casino.www"], with_deps=False
+        ["casino.venv", "casino.www"], with_deps=False
     )
-    assert order == [("casino", "tui"), ("casino", "www")]
+    assert order == [("casino", "venv"), ("casino", "www")]
 
 
 def test_explicit_sub_for_no_deps_project():
@@ -185,7 +185,7 @@ def test_explicit_sub_for_no_deps_project():
 
 
 def test_with_deps_explicit_casino_subs_walks_full_chain():
-    """`deploy --with-deps casino.tui casino.www` walks the chain for both.
+    """`deploy --with-deps casino.venv casino.www` walks the chain for both.
 
     The previous "auto-expand all subs under --with-deps" shortcut is
     gone; callers name the subs explicitly to get the full chain for
@@ -199,13 +199,11 @@ def test_with_deps_explicit_casino_subs_walks_full_chain():
     so the chain lands the engine-library umbrella correctly.
     """
     order = deploytool.lib.resolve(
-        ["casino.tui", "casino.www"], with_deps=True
+        ["casino.venv", "casino.www"], with_deps=True
     )
     assert order == [
         ("bbsengine6", "prod"),
-        ("bbsengine6", "tui"),
-        ("bed", "tui"),
-        ("casino", "tui"),
+        ("casino", "venv"),
         ("casino", "www"),
     ]
 
@@ -237,17 +235,16 @@ def test_with_deps_bare_bed_is_ambiguous(monkeypatch):
 
 
 def test_with_deps_explicit_sub_walks_chain():
-    """`deploy --with-deps casino.tui` walks full chain for that sub."""
-    order = deploytool.lib.resolve(["casino.tui"], with_deps=True)
+    """`deploy --with-deps casino.venv` walks full chain for that sub."""
+    order = deploytool.lib.resolve(["casino.venv"], with_deps=True)
     assert order == [
-        ("bbsengine6", "tui"),
-        ("bed", "tui"),
-        ("casino", "tui"),
+        ("bbsengine6", None),
+        ("casino", "venv"),
     ]
 
 
 def test_with_deps_explicit_subs_combined():
-    """`deploy --with-deps casino.tui casino.www` merges chains.
+    """`deploy --with-deps casino.venv casino.www` merges chains.
 
     casino.www's CONDITIONAL_DEPENDENCIES edge was previously
     `("bbsengine6", "www")` (broken: the legacy `www` sub was
@@ -257,13 +254,11 @@ def test_with_deps_explicit_subs_combined():
     full rationale.
     """
     order = deploytool.lib.resolve(
-        ["casino.tui", "casino.www"], with_deps=True
+        ["casino.venv", "casino.www"], with_deps=True
     )
     assert order == [
         ("bbsengine6", "prod"),
-        ("bbsengine6", "tui"),
-        ("bed", "tui"),
-        ("casino", "tui"),
+        ("casino", "venv"),
         ("casino", "www"),
     ]
 
@@ -565,9 +560,9 @@ def test_zoid6_shared_make_target_aliases_to_bare_shared():
 
 def test_resolve_default_kwarg_is_false():
     """`resolve([...])` (no kwarg) defaults to with_deps=False."""
-    no_kwarg = deploytool.lib.resolve(["casino.tui"])
-    explicit_false = deploytool.lib.resolve(["casino.tui"], with_deps=False)
-    assert no_kwarg == explicit_false == [("casino", "tui")]
+    no_kwarg = deploytool.lib.resolve(["casino.venv"])
+    explicit_false = deploytool.lib.resolve(["casino.venv"], with_deps=False)
+    assert no_kwarg == explicit_false == [("casino", "venv")]
 
 
 # ---------------------------------------------------------------------------
@@ -591,7 +586,7 @@ def test_unknown_sub_target_errors(monkeypatch):
         deploytool.lib.resolve(["casino.nonexistent"], with_deps=False)
     out = "\n".join(msgs)
     assert "nonexistent" in out
-    assert "tui" in out
+    assert "venv" in out
     assert "www" in out
 
 
@@ -602,14 +597,14 @@ def test_unknown_sub_target_errors(monkeypatch):
 
 def test_buildargs_with_deps_defaults_to_false():
     """Without --with-deps, args.with_deps is False."""
-    args = deploytool.lib.buildargs().parse_args(["casino.tui"])
+    args = deploytool.lib.buildargs().parse_args(["casino.venv"])
     assert args.with_deps is False
 
 
 def test_buildargs_with_deps_sets_flag():
     """--with-deps sets args.with_deps = True."""
     args = deploytool.lib.buildargs().parse_args(
-        ["--with-deps", "casino.tui"]
+        ["--with-deps", "casino.venv"]
     )
     assert args.with_deps is True
 
@@ -617,7 +612,7 @@ def test_buildargs_with_deps_sets_flag():
 def test_buildargs_with_deps_compatible_with_editable():
     """--with-deps and --editable round-trip together."""
     args = deploytool.lib.buildargs().parse_args(
-        ["--with-deps", "--editable", "casino.tui"]
+        ["--with-deps", "--editable", "casino.venv"]
     )
     assert args.with_deps is True
     assert args.editable is True
