@@ -1,7 +1,7 @@
 """Tests for shortest-unique-prefix sub-target matching in `lib.resolve`.
 
 The sub string on the command line is normally a full sub name
-(`bbsengine6.handbook`, `zoid6.prod`, `casino.tui`). The resolver
+(`bbsengine6.handbook`, `zoid6.prod`, `casino.venv`). The resolver
 also accepts the **shortest unique prefix** of a sub name within
 that project's `TARGETS` list:
 
@@ -9,7 +9,7 @@ that project's `TARGETS` list:
   - `bbsengine6.hand`   -> handbook
   - `bbsengine6.wwwco`  -> wwwcom     (wwworg excluded by length)
   - `zoid6.p`           -> prod
-  - `casino.t`          -> tui
+  - `casino.v`          -> venv
   - `bbsengine6.www`    -> ERROR      (matches both wwworg and wwwcom;
                                        prefix is ambiguous)
   - `bbsengine6.x`      -> ERROR      (no match; existing

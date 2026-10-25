@@ -44,26 +44,26 @@ import deploytool.lib
 
 def test_buildargs_default_upgrade_is_true():
     """--upgrade is enabled by default; bare invocation yields upgrade=True."""
-    args = deploytool.lib.buildargs().parse_args(["casino.tui"])
+    args = deploytool.lib.buildargs().parse_args(["casino.venv"])
     assert args.upgrade is True
 
 
 def test_buildargs_explicit_upgrade_sets_true():
     """--upgrade sets args.upgrade=True (explicit)."""
-    args = deploytool.lib.buildargs().parse_args(["--upgrade", "casino.tui"])
+    args = deploytool.lib.buildargs().parse_args(["--upgrade", "casino.venv"])
     assert args.upgrade is True
 
 
 def test_buildargs_no_upgrade_sets_false():
     """--no-upgrade sets args.upgrade=False."""
-    args = deploytool.lib.buildargs().parse_args(["--no-upgrade", "casino.tui"])
+    args = deploytool.lib.buildargs().parse_args(["--no-upgrade", "casino.venv"])
     assert args.upgrade is False
 
 
 def test_buildargs_upgrade_compatible_with_other_flags():
     """--upgrade / --no-upgrade round-trips with --editable, --with-deps, --verify."""
     args = deploytool.lib.buildargs().parse_args(
-        ["--no-upgrade", "--editable", "--with-deps", "--verify", "casino.tui"]
+        ["--no-upgrade", "--editable", "--with-deps", "--verify", "casino.venv"]
     )
     assert args.upgrade is False
     assert args.editable is True
