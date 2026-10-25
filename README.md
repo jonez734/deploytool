@@ -49,24 +49,23 @@ deploy [options] project[.sub] [project[.sub] ...]
 ### Examples
 
 ```sh
-# build only what was named: casino.tui (no bbsengine6, no bed pulled in)
-deploy casino.tui
+# build only what was named: casino.venv (no bbsengine6, no bed pulled in)
+deploy casino.venv
 
 # both subs for casino, no transitive deps
-deploy casino.tui casino.www
+deploy casino.venv casino.www
 
 # bare base is AMBIGUOUS without --with-deps: errors out listing subs
 deploy casino
-# -> exit 1 with: casino has multiple sub-targets (tui, www); choose ...
+# -> exit 1 with: casino has multiple sub-targets (venv, www); choose ...
 
-# bare base with --with-deps is the "build the whole thing" shortcut:
-# auto-expands subs AND walks the full dep chain
+# bare base with --with-deps is still ambiguous: name the subs explicitly
 deploy --with-deps casino
-# -> bbsengine6.tui, bbsengine6.prod, bed.tui, casino.tui, casino.www
+# -> exit 1 with: casino has multiple sub-targets (venv, www); choose ...
 
 # explicit sub under --with-deps: chain for that sub
-deploy --with-deps casino.tui
-# -> bbsengine6.tui, bed.tui, casino.tui
+deploy --with-deps casino.venv
+# -> bbsengine6 (bare), casino.venv
 
 # dry-run: see the chain without executing. Each step runs `make -n`
 # against the real per-project Makefile, so the output includes the
@@ -74,14 +73,14 @@ deploy --with-deps casino.tui
 # `cd py && pip install -e .` under --editable, recursive `make -C
 # zoid6/src deploy-tui`, etc.). The verify step is skipped since
 # `php` has no dry-run flag.
-deploy --dry-run casino.tui
+deploy --dry-run casino.venv
 
 # deploy + verify (runs bbsengine6's blurb render test after)
 deploy --verify bbsengine6.www
 
 # editable install across the chain: edits in any source tree are
 # picked up on next interpreter start without a rebuild
-deploy --editable --with-deps casino.tui
+deploy --editable --with-deps casino.venv
 
 # single-sub project has no ambiguity: `deploy getdate_next` -> tui
 deploy getdate_next
@@ -124,7 +123,7 @@ deploy bbsengine6.www  # ERROR: matches both wwworg and wwwcom
 ### Sub-target semantics
 
 For each project, `TARGETS[proj]` lists the sub-targets that project
-exposes (e.g. `casino -> ["tui", "www"]`). The caller may invoke a
+exposes (e.g. `casino -> ["venv", "www"]`). The caller may invoke a
 project three ways:
 
 - **`deploy proj.tui`** — pin one or more explicit subs; only those
