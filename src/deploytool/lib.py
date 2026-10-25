@@ -229,7 +229,7 @@ TARGETS = {
     # achilles has no deploy-tui rule in its Makefile (only deploy-www and
     # the bare deploy: www alias), so tui is not advertised until one exists.
     "achilles": ["www"],
-    "casino": ["tui", "www"],
+    "casino": ["tui", "venv", "www"],
     "article2": ["www", "tui"],
     "backuptools": ["www", "tui"],
     # `prod` publishes to /srv/repo/deploytool/; `pypi`/`testpypi` upload
@@ -290,6 +290,8 @@ MAKE_TARGET_ALIASES = {
     ("bbsengine6", "prod"): "deploy",
     # Local venv install (no remote). Added so bed.venv can depend on it.
     ("bbsengine6", "venv"): "venv",
+    # Local venv install of casino's wheel (casino/Makefile `venv`).
+    ("casino", "venv"): "venv",
     ("teos", "prod"): "prod",
     # teos.www is the vhost deploy: same target as teos.prod.
     ("teos", "www"): "prod",
