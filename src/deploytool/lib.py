@@ -213,7 +213,8 @@ CONDITIONAL_DEPENDENCIES = {
 }
 
 TARGETS = {
-    "zoid6": ["www", "tui", "prod", "shared"],
+    # identd is a separate, explicit step: it is not part of zoid6.prod.
+    "zoid6": ["www", "tui", "prod", "shared", "identd"],
     "letteredolive": ["venv", "prod"],
     # `prod` (added 2026-09-29) — the full teos stack. Aliased via
     # MAKE_TARGET_ALIASES[("teos","prod")] = "prod" (the `prod:` rule
@@ -236,7 +237,8 @@ TARGETS = {
     # (see the drop gate in resolve()).
     "deploytool": ["tui", "prod", "pypi", "testpypi"],
     "zoidoffice": ["tui", "www"],
-    "bed": ["tui", "venv", "prod"],
+    # identd is a separate, explicit step: it is not part of bed.prod.
+    "bed": ["tui", "venv", "prod", "identd"],
     # `prod` (added 2026-09-29) — the engine-library umbrella
     # (bbsengine6/Makefile `deploy:` rule at line 286: engine stage +
     # engine deploy-engine + skin stage + php-deploy + smarty rsync,
@@ -280,6 +282,10 @@ TARGETS = {
 MAKE_TARGET_ALIASES = {
     ("bed", "tui"): "venv",
     ("zoid6", "shared"): "shared",
+    # Identd mapping for the daemon login: appends managed lines to pg_hba.conf and
+    # pg_ident.conf, then reloads postgresql-18. Run explicitly; not part of prod.
+    ("zoid6", "identd"): "install-pgsql",
+    ("bed", "identd"): "install-pgsql",
     # Added 2026-09-29 — bbsengine6.prod and teos.prod are the
     # user-facing names for the two umbrella deploys that don't
     # follow the `deploy-<sub>` shape. bbsengine6.prod maps to the
