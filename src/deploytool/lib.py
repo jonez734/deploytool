@@ -97,7 +97,7 @@ VENV_USER = None
 VENV_LAYOUT = {
     # The zoid6 account owns its venv under its home; the daemon unit runs from here.
     "zoid6": "/home/zoid6/venv",
-    "bed": "/var/lib/bed/venv",
+    "bed": "/home/bed/venv",
     "mistermcfeely": VENV_USER,
     "bbsengine6": VENV_USER,
     "murdermotel": "/var/lib/zoid6/venv",
