@@ -36,3 +36,8 @@ def test_zoid6_www_keeps_its_prod_edge():
 
 def test_shared_stays_unambiguous_with_the_new_subs():
     assert lib.resolve(["zoid6.shared"], with_deps=False) == [("zoid6", "shared")]
+
+
+def test_zoid6_venv_runs_as_the_zoid6_account():
+    """The account install runs as zoid6 (sudo -u zoid6), so install-wheels' own check passes."""
+    assert lib.RUN_AS[("zoid6", "venv")] == "zoid6"

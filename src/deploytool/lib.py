@@ -46,6 +46,12 @@ PROJECT_DIRS = {
 # bbsengine6.venv; the bare bbsengine6 edge would run bbsengine6's default sub (prod).
 BARE_DEPS_SKIPPED_FOR = {("bed", "venv"), ("zoid6", "venv")}
 
+# (project, sub) pairs whose make target runs as another account. zoid6.venv builds the venv in the
+# zoid6 account's home, so it runs as zoid6 (the install-wheels target checks this).
+RUN_AS = {
+    ("zoid6", "venv"): "zoid6",
+}
+
 DEPENDENCIES = {
     "getdate_next": [],
     "bbsengine6": [],
@@ -710,6 +716,11 @@ def run_make_deploy(args, project, sub=None):
         sub = MAKE_TARGET_ALIASES.get((project, sub), sub) if sub is not None else sub
         target = f"deploy-{sub}" if sub else "deploy"
     cmd = ["make", "-C", project_dir, target]
+    # A sub that installs into an account's own home runs as that account (no root needed for the
+    # account's files). The account is the one that owns the target directory.
+    run_as = RUN_AS.get((project, sub))
+    if run_as:
+        cmd = ["sudo", "-u", run_as] + cmd
     label = f"{project}.{sub}" if sub else project
 
     # Always copy the operator's env so PATH and friends are preserved,
