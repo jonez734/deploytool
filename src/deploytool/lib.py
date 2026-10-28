@@ -699,6 +699,43 @@ def _run_subprocess(cmd, *, cwd=None, timeout, env=None, label):
     return result
 
 
+# The zoid6 account's staged install. zoid6.venv cannot run the repo's install-wheels target
+# from an operator shell (it refuses any user but zoid6, and the account cannot read the repo),
+# and deploytool cannot prompt for sudo. So zoid6.venv is preflighted here: the account
+# installer is the install, and the operator runs it as the account.
+ZOID6_ACCOUNT_DIST = "/home/zoid6/dist-wheels"
+ZOID6_ACCOUNT_INSTALLER = f"{ZOID6_ACCOUNT_DIST}/INSTALL-zoid6-venv.sh"
+ZOID6_MANIFEST = "/home/opencode/data/work/dist-wheels/zoid6-wheels.txt"
+ZOID6_SYNC = "/home/opencode/data/work/dist-wheels/sync-zoid6-wheels.sh"
+
+
+def _zoid6_manifest_wheels():
+    """The wheel filenames the zoid6 manifest lists (comments and blank lines skipped)."""
+    with open(ZOID6_MANIFEST) as fh:
+        return [ln.strip() for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
+
+
+def preflight_zoid6_venv(args):
+    """Check the zoid6 account install can run; print the operator steps it needs.
+
+    Returns normally when the account's staged wheels match the manifest. Raises DeployFailed
+    with the exact commands to run when the sync is missing or stale. The account install itself
+    is run by the operator as zoid6 (deploytool cannot prompt for sudo), so this never runs it.
+    """
+    wanted = _zoid6_manifest_wheels()
+    missing = [w for w in wanted if not os.path.isfile(os.path.join(ZOID6_ACCOUNT_DIST, w))]
+    if missing:
+        io.echo("{red}zoid6.venv: the account's wheels are not synced:{/all}")
+        for w in missing:
+            io.echo(f"  missing {ZOID6_ACCOUNT_DIST}/{w}")
+        io.echo("Run as root (the sync is a root step), then re-run:")
+        io.echo(f"  sudo sh {ZOID6_SYNC}")
+        raise DeployFailed(rc=2, label="zoid6.venv")
+    io.echo(f"zoid6.venv: {len(wanted)} wheels staged in {ZOID6_ACCOUNT_DIST}")
+    io.echo("Run the account install as zoid6, then re-run this deploy:")
+    io.echo(f"  sudo -u zoid6 sh {ZOID6_ACCOUNT_INSTALLER}")
+
+
 def run_make_deploy(args, project, sub=None):
     """Run `make deploy[-sub]` for `project.sub`; abort the deploy on failure.
 
@@ -706,6 +743,12 @@ def run_make_deploy(args, project, sub=None):
     subprocess exit, timeout, or environment error. KeyboardInterrupt and
     SystemExit propagate to the caller.
     """
+    if (project, sub) == ("zoid6", "venv"):
+        if getattr(args, "dry_run", False):
+            io.echo(f"{{yellow}}dry-run:{{/all}} zoid6.venv preflight, then: sudo -u zoid6 sh {ZOID6_ACCOUNT_INSTALLER}")
+            return 0
+        preflight_zoid6_venv(args)
+        return 0
     project_dir = f"{SOURCE_BASE}/{PROJECT_DIRS.get(project, project)}"
     # When the (project, sub) pair has a MAKE_TARGET_ALIASES entry, the
     # alias value is the bare make target name (e.g. zoid6's `shared` rule

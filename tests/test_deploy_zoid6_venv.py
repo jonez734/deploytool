@@ -41,3 +41,54 @@ def test_shared_stays_unambiguous_with_the_new_subs():
 def test_zoid6_venv_runs_as_the_zoid6_account():
     """The account install runs as zoid6 (sudo -u zoid6), so install-wheels' own check passes."""
     assert lib.RUN_AS[("zoid6", "venv")] == "zoid6"
+
+
+def _manifest(tmp_path, names):
+    m = tmp_path / "zoid6-wheels.txt"
+    m.write_text("# comment\n" + "\n".join(names) + "\n")
+    return m
+
+
+def _echoes(monkeypatch):
+    out = []
+    monkeypatch.setattr(lib.io, "echo", lambda msg, *a, **k: out.append(str(msg)))
+    return out
+
+
+def test_preflight_names_the_sync_when_wheels_are_missing(tmp_path, monkeypatch):
+    import pytest
+    out = _echoes(monkeypatch)
+    names = ["bed-0.4.0.dev1-py3-none-any.whl"]
+    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, names)))
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "empty"))
+    with pytest.raises(lib.DeployFailed) as ei:
+        lib.preflight_zoid6_venv(object())
+    assert ei.value.rc == 2
+    text = "\n".join(out)
+    assert "sudo sh" in text and "sync-zoid6-wheels.sh" in text
+
+
+def test_preflight_names_the_account_install_when_synced(tmp_path, monkeypatch):
+    out = _echoes(monkeypatch)
+    names = ["bed-0.4.0.dev1-py3-none-any.whl"]
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / names[0]).write_bytes(b"")
+    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, names)))
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(dist))
+    lib.preflight_zoid6_venv(object())  # returns normally
+    assert f"sudo -u zoid6 sh {lib.ZOID6_ACCOUNT_INSTALLER}" in "\n".join(out)
+
+
+def test_zoid6_venv_dry_run_does_not_abort(monkeypatch):
+    out = _echoes(monkeypatch)
+    monkeypatch.setattr(lib, "ZOID6_MANIFEST", "/nonexistent/manifest")
+    args = type("A", (), {"dry_run": True})()
+    assert lib.run_make_deploy(args, "zoid6", "venv") == 0
+    assert "dry-run" in "\n".join(out)
+
+
+def test_zoid6_venv_is_preflighted_not_the_repo_make_target():
+    import inspect
+    src = inspect.getsource(lib.run_make_deploy)
+    assert '("zoid6", "venv")' in src and "preflight_zoid6_venv" in src
