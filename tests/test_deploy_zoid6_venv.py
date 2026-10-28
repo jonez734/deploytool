@@ -92,3 +92,27 @@ def test_zoid6_venv_is_preflighted_not_the_repo_make_target():
     import inspect
     src = inspect.getsource(lib.run_make_deploy)
     assert '("zoid6", "venv")' in src and "preflight_zoid6_venv" in src
+
+
+def test_zoid6_wheels_preflight_names_the_root_sync_when_not_synced(tmp_path, monkeypatch):
+    out = _echoes(monkeypatch)
+    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, ["bed-0.4.0.dev1-py3-none-any.whl"])))
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "empty"))
+    import pytest
+    with pytest.raises(lib.DeployFailed) as ei:
+        lib.preflight_zoid6_wheels(object())
+    assert ei.value.label == "zoid6.wheels"
+    assert "sudo sh" in "\n".join(out)
+
+
+def test_zoid6_wheels_is_preflighted_not_the_root_make_target(monkeypatch):
+    import inspect
+    src = inspect.getsource(lib.run_make_deploy)
+    assert '("zoid6", "wheels")' in src and "preflight_zoid6_wheels" in src
+
+
+def test_zoid6_wheels_dry_run_does_not_abort(monkeypatch):
+    out = _echoes(monkeypatch)
+    args = type("A", (), {"dry_run": True})()
+    assert lib.run_make_deploy(args, "zoid6", "wheels") == 0
+    assert "dry-run" in "\n".join(out)

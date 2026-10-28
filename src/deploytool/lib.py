@@ -715,6 +715,23 @@ def _zoid6_manifest_wheels():
         return [ln.strip() for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
 
 
+def preflight_zoid6_wheels(args):
+    """Check the account's wheels are synced; print the root command when they are not.
+
+    sync-wheels is a root step. A run that reaches zoid6.wheels without it stops here, with the
+    exact command, rather than failing inside make.
+    """
+    missing = [w for w in _zoid6_manifest_wheels() if not os.path.isfile(os.path.join(ZOID6_ACCOUNT_DIST, w))]
+    if missing:
+        io.echo("{red}zoid6.wheels: the account's wheels are not synced:{/all}")
+        for w in missing:
+            io.echo(f"  missing {ZOID6_ACCOUNT_DIST}/{w}")
+        io.echo("Run as root, then re-run this deploy:")
+        io.echo(f"  sudo sh {ZOID6_SYNC}")
+        raise DeployFailed(rc=2, label="zoid6.wheels")
+    io.echo(f"zoid6.wheels: {ZOID6_ACCOUNT_DIST} already matches the manifest")
+
+
 def preflight_zoid6_venv(args):
     """Check the zoid6 account install can run; print the operator steps it needs.
 
@@ -743,6 +760,14 @@ def run_make_deploy(args, project, sub=None):
     subprocess exit, timeout, or environment error. KeyboardInterrupt and
     SystemExit propagate to the caller.
     """
+    if (project, sub) == ("zoid6", "wheels"):
+        # sync-wheels needs root, and deploytool cannot prompt for sudo. Check the sync is already
+        # done (the account's wheels match the manifest) and print the root command otherwise.
+        if getattr(args, "dry_run", False):
+            io.echo(f"{{yellow}}dry-run:{{/all}} zoid6.wheels preflight (sync-wheels runs as root)")
+            return 0
+        preflight_zoid6_wheels(args)
+        return 0
     if (project, sub) == ("zoid6", "venv"):
         if getattr(args, "dry_run", False):
             io.echo(f"{{yellow}}dry-run:{{/all}} zoid6.venv preflight, then: sudo -u zoid6 sh {ZOID6_ACCOUNT_INSTALLER}")
