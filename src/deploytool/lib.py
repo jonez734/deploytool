@@ -44,7 +44,7 @@ PROJECT_DIRS = {
 # (project, sub) pairs whose bare DEPENDENCIES edges are NOT followed. Their explicit
 # CONDITIONAL_DEPENDENCIES edges say exactly what they need. bed.venv needs only
 # bbsengine6.venv; the bare bbsengine6 edge would run bbsengine6's default sub (prod).
-BARE_DEPS_SKIPPED_FOR = {("bed", "venv")}
+BARE_DEPS_SKIPPED_FOR = {("bed", "venv"), ("zoid6", "venv")}
 
 DEPENDENCIES = {
     "getdate_next": [],
@@ -89,7 +89,8 @@ VENV_USER = None
 # plumb venv vars into `make`; per-project Makefile defaults and `pip` handle
 # venv targeting. Projects not listed default to VENV_USER.
 VENV_LAYOUT = {
-    "zoid6": "/var/lib/zoid6/venv",
+    # The zoid6 account owns its venv under its home; the daemon unit runs from here.
+    "zoid6": "/home/zoid6/venv",
     "bed": "/var/lib/bed/venv",
     "mistermcfeely": VENV_USER,
     "bbsengine6": VENV_USER,
@@ -126,6 +127,9 @@ CONDITIONAL_DEPENDENCIES = {
         # case but unused here).
         "www": [("bbsengine6", "prod")],
         "tui": [("bbsengine6", "tui"), ("bed", "tui")],
+        # zoid6.venv installs the engine into the account's venv (bbsengine6's venv sub, not prod),
+        # then syncs and installs the staged wheels.
+        "venv": [("bbsengine6", "venv"), ("zoid6", "wheels")],
     },
     "casino": {
         # Updated 2026-09-29 — ("bbsengine6", "www") was an invalid edge:
@@ -214,7 +218,7 @@ CONDITIONAL_DEPENDENCIES = {
 
 TARGETS = {
     # identd is a separate, explicit step: it is not part of zoid6.prod.
-    "zoid6": ["www", "tui", "prod", "shared", "identd"],
+    "zoid6": ["www", "tui", "prod", "shared", "identd", "wheels", "venv"],
     "letteredolive": ["venv", "prod"],
     # `prod` (added 2026-09-29) — the full teos stack. Aliased via
     # MAKE_TARGET_ALIASES[("teos","prod")] = "prod" (the `prod:` rule
@@ -285,6 +289,8 @@ MAKE_TARGET_ALIASES = {
     # Identd mapping for the daemon login: appends managed lines to pg_hba.conf and
     # pg_ident.conf, then reloads postgresql-18. Run explicitly; not part of prod.
     ("zoid6", "identd"): "install-pgsql",
+    ("zoid6", "wheels"): "sync-wheels",
+    ("zoid6", "venv"): "install-wheels",
     ("bed", "identd"): "install-pgsql",
     # Added 2026-09-29 — bbsengine6.prod and teos.prod are the
     # user-facing names for the two umbrella deploys that don't
