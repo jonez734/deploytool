@@ -114,7 +114,7 @@ def test_upload_targets_require_confirm_and_credentials():
 
 def test_upload_targets_upload_only_this_version_artifacts():
     text = _makefile()
-    assert "ARTIFACTS = $(OUTDIR)$(PROJECT)-0.0.1.dev$(VERSION)*" in text
+    assert "ARTIFACTS = $(OUTDIR)$(PROJECT)-$(VERSION)*" in text
     assert "twine upload $(ARTIFACTS)*" in text
     assert "--repository-url $(TESTPYPI_URL) $(ARTIFACTS)*" in text
 

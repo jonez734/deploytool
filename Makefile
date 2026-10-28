@@ -2,10 +2,14 @@ PROJECT = deploytool
 OUTDIR = dist/
 # Pinned with ?= so sub-make invocations (tui -> build, prod -> tui) share
 # one version and the artifact names stay stable across stage and publish.
-VERSION ?= $(shell date +%Y%m%d%H%M)
-WHEEL := $(OUTDIR)$(PROJECT)-0.0.1.dev$(VERSION)-py3-none-any.whl
+# Build version: 0.0.2.dev<YYYYMMDDHHMMSS>, unique per build (shared script in the meta-repo).
+# Override WHEELS_DIR when building outside the meta-repo.
+WHEELS_DIR ?= $(CURDIR)/../dist-wheels
+VERSION_SCRIPT ?= $(CURDIR)/../scripts/next_version.sh
+VERSION ?= $(shell $(VERSION_SCRIPT) 0.0.2.dev $(WHEELS_DIR))
+WHEEL := $(OUTDIR)$(PROJECT)-$(VERSION)-py3-none-any.whl
 # Artifact glob for this version. Publish targets upload only these files.
-ARTIFACTS = $(OUTDIR)$(PROJECT)-0.0.1.dev$(VERSION)*
+ARTIFACTS = $(OUTDIR)$(PROJECT)-$(VERSION)*
 
 PYTHON ?= python3
 VENV_DIR ?= $(if $(VIRTUAL_ENV),$(VIRTUAL_ENV),.venv)
@@ -42,7 +46,7 @@ clean:
 
 version:
 	@mkdir -p src/$(PROJECT)
-	@echo '__version__ = "0.0.1.dev$(VERSION)"' > src/$(PROJECT)/_version.py
+	@echo '__version__ = "$(VERSION)"' > src/$(PROJECT)/_version.py
 	@echo '__datestamp__ = "$(VERSION)"' >> src/$(PROJECT)/_version.py
 	@echo '__githash__ = "'`git log -1 --format='%H' 2>/dev/null | cut -c 1-16`'"' >> src/$(PROJECT)/_version.py
 	@cat src/$(PROJECT)/_version.py
