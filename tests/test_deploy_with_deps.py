@@ -187,6 +187,9 @@ def test_explicit_sub_for_no_deps_project():
 def test_with_deps_explicit_casino_subs_walks_full_chain():
     """`deploy --with-deps casino.venv casino.www` walks the chain for both.
 
+    casino imports bed at module level (casino/_routing.py), so bed is a
+    bare dependency of casino and runs before casino's subs.
+
     The previous "auto-expand all subs under --with-deps" shortcut is
     gone; callers name the subs explicitly to get the full chain for
     each. Both subs' chains merge into one topo-sorted order.
@@ -202,6 +205,7 @@ def test_with_deps_explicit_casino_subs_walks_full_chain():
         ["casino.venv", "casino.www"], with_deps=True
     )
     assert order == [
+        ("bed", None),
         ("bbsengine6", "prod"),
         ("casino", "venv"),
         ("casino", "www"),
@@ -239,6 +243,7 @@ def test_with_deps_explicit_sub_walks_chain():
     order = deploytool.lib.resolve(["casino.venv"], with_deps=True)
     assert order == [
         ("bbsengine6", None),
+        ("bed", None),
         ("casino", "venv"),
     ]
 
@@ -257,6 +262,7 @@ def test_with_deps_explicit_subs_combined():
         ["casino.venv", "casino.www"], with_deps=True
     )
     assert order == [
+        ("bed", None),
         ("bbsengine6", "prod"),
         ("casino", "venv"),
         ("casino", "www"),
@@ -722,3 +728,9 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_casino_depends_on_bed():
+    """casino imports bed at module level (casino/_routing.py), so bed is a
+    bare dependency of casino. Dropping this edge breaks casino at runtime."""
+    assert "bed" in deploytool.lib.DEPENDENCIES["casino"]

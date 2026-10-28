@@ -59,7 +59,7 @@ DEPENDENCIES = {
     "teos": ["bbsengine6", "zoid6"],
     "murdermotel": ["bbsengine6", "zoid6"],
     "empyre": ["bbsengine6", "zoid6"],
-    "casino": ["bbsengine6"],
+    "casino": ["bbsengine6", "bed"],
     "bed": ["bbsengine6"],
     "mistermcfeely": ["bbsengine6"],
     "achilles": ["bbsengine6", "zoid6"],
