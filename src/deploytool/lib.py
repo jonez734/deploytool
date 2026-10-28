@@ -718,9 +718,6 @@ def run_make_deploy(args, project, sub=None):
     cmd = ["make", "-C", project_dir, target]
     # A sub that installs into an account's own home runs as that account (no root needed for the
     # account's files). The account is the one that owns the target directory.
-    run_as = RUN_AS.get((project, sub))
-    if run_as:
-        cmd = ["sudo", "-u", run_as] + cmd
     label = f"{project}.{sub}" if sub else project
 
     # Always copy the operator's env so PATH and friends are preserved,
