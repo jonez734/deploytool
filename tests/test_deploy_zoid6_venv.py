@@ -148,3 +148,24 @@ def test_zoid6_steps_are_wired_in_run_make_deploy():
     import inspect
     src = inspect.getsource(lib.run_make_deploy)
     assert "run_zoid6_wheels" in src and "run_zoid6_venv" in src
+
+
+def test_stage_file_replaces_without_copying_metadata(tmp_path, monkeypatch):
+    """Staging must rename over the target, not copy2: copy2 fails on account-owned files (EPERM)."""
+    src = tmp_path / "src.whl"
+    src.write_bytes(b"new")
+    dst = tmp_path / "dst.whl"
+    dst.write_bytes(b"old")
+    def no_copy2(*a, **k):
+        raise PermissionError("copy2 touches metadata; must not be used")
+    monkeypatch.setattr(lib.shutil, "copy2", no_copy2)
+    lib._stage_file(str(src), str(dst), 0o644)
+    assert dst.read_bytes() == b"new"
+    assert (dst.stat().st_mode & 0o777) == 0o644
+    assert not any(p.name.endswith(".tmp") for p in tmp_path.iterdir())
+
+
+def test_zoid6_staging_uses_stage_file_not_copy2():
+    import inspect
+    src = inspect.getsource(lib.run_zoid6_wheels)
+    assert "_stage_file(" in src and "copy2" not in src

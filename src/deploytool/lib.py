@@ -727,6 +727,19 @@ def _zoid6_fix_hint(path):
     return f"  chmod g+rwx {path}   (as zoid6 or root; jam is in group zoid6)"
 
 
+def _stage_file(src, dst, mode=0o644):
+    """Copy src to dst by writing a temp file in dst's directory and renaming it over dst.
+
+    The account owns the staged files, so jam cannot change their metadata (copy2 would fail with
+    EPERM). A rename needs only write access to the directory, which the zoid6 group has. The bytes
+    are copied and the mode is set; ownership and timestamps are left to the account.
+    """
+    tmp = f"{dst}.{os.getpid()}.tmp"
+    shutil.copyfile(src, tmp)
+    os.chmod(tmp, mode)
+    os.replace(tmp, dst)
+
+
 def run_zoid6_wheels(args):
     """Build the zoid6 wheels (helper), then stage them and the installer into the account's home.
 
@@ -764,9 +777,8 @@ def run_zoid6_wheels(args):
             os.remove(os.path.join(ZOID6_ACCOUNT_DIST, old))
             io.echo(f"zoid6.wheels: removed stale {old}")
     for name in wanted:
-        shutil.copy2(os.path.join(ZOID6_STAGE, name), os.path.join(ZOID6_ACCOUNT_DIST, name))
-    shutil.copy2(ZOID6_INSTALLER_SRC, ZOID6_ACCOUNT_INSTALLER)
-    os.chmod(ZOID6_ACCOUNT_INSTALLER, 0o755)
+        _stage_file(os.path.join(ZOID6_STAGE, name), os.path.join(ZOID6_ACCOUNT_DIST, name), 0o644)
+    _stage_file(ZOID6_INSTALLER_SRC, ZOID6_ACCOUNT_INSTALLER, 0o755)
     io.echo(f"zoid6.wheels: {len(wanted)} wheels and the installer staged in {ZOID6_ACCOUNT_DIST}")
 
 
