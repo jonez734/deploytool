@@ -6,7 +6,9 @@ OUTDIR = dist/
 # Override WHEELS_DIR when building outside the meta-repo.
 WHEELS_DIR ?= $(CURDIR)/../dist-wheels
 VERSION_SCRIPT ?= $(CURDIR)/../scripts/next_version.sh
+# Evaluated once, when the Makefile is read: build, install and the wheel name share one version.
 VERSION ?= $(shell $(VERSION_SCRIPT) 0.0.2.dev $(WHEELS_DIR))
+VERSION := $(VERSION)
 WHEEL := $(OUTDIR)$(PROJECT)-$(VERSION)-py3-none-any.whl
 # Artifact glob for this version. Publish targets upload only these files.
 ARTIFACTS = $(OUTDIR)$(PROJECT)-$(VERSION)*
@@ -87,6 +89,7 @@ ifeq ($(DEPLOY_EDITABLE),1)
 	cd src && $(PIP) install $(PIP_UPGRADE_FLAG) --no-cache-dir -e .
 	-rm -rf src/$(PROJECT).egg-info
 else
+	@test -f $(WHEEL) || { echo "install: $(WHEEL) not found; run 'make build' first" >&2; exit 1; }
 	$(PIP) install $(PIP_UPGRADE_FLAG) --no-deps $(WHEEL)
 	@$(VERIFY_INSTALL)
 endif
