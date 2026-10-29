@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 import re
 import subprocess
 import sys
@@ -699,14 +700,17 @@ def _run_subprocess(cmd, *, cwd=None, timeout, env=None, label):
     return result
 
 
-# The zoid6 account's staged install. zoid6.venv cannot run the repo's install-wheels target
-# from an operator shell (it refuses any user but zoid6, and the account cannot read the repo),
-# and deploytool cannot prompt for sudo. So zoid6.venv is preflighted here: the account
-# installer is the install, and the operator runs it as the account.
-ZOID6_ACCOUNT_DIST = "/home/zoid6/dist-wheels"
+# The zoid6 account's install, run by deploy as jam. Jam is in the zoid6 group, so the account home
+# and its dist-wheels and venv are written through group access, with no sudo. Each step checks its
+# target is writable first, and stops with the exact fix when it is not.
+ZOID6_HOME = "/home/zoid6"
+ZOID6_ACCOUNT_DIST = f"{ZOID6_HOME}/dist-wheels"
+ZOID6_VENV = f"{ZOID6_HOME}/venv"
 ZOID6_ACCOUNT_INSTALLER = f"{ZOID6_ACCOUNT_DIST}/INSTALL-zoid6-venv.sh"
-ZOID6_MANIFEST = "/home/opencode/data/work/dist-wheels/zoid6-wheels.txt"
-ZOID6_SYNC = "/home/opencode/data/work/dist-wheels/sync-zoid6-wheels.sh"
+ZOID6_STAGE = "/home/opencode/data/work/dist-wheels"
+ZOID6_MANIFEST = f"{ZOID6_STAGE}/zoid6-wheels.txt"
+ZOID6_INSTALLER_SRC = "/home/opencode/data/work/zoid6/scripts/INSTALL-zoid6-venv.sh"
+ZOID6_BUILD_HELPER = "/home/opencode/data/work/zoid6/scripts/build_zoid6_wheels.sh"
 
 
 def _zoid6_manifest_wheels():
@@ -715,42 +719,81 @@ def _zoid6_manifest_wheels():
         return [ln.strip() for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
 
 
-def preflight_zoid6_wheels(args):
-    """Check the account's wheels are synced; print the root command when they are not.
+def _writable_by_me(path):
+    return os.path.isdir(path) and os.access(path, os.W_OK | os.X_OK)
 
-    sync-wheels is a root step. A run that reaches zoid6.wheels without it stops here, with the
-    exact command, rather than failing inside make.
+
+def _zoid6_fix_hint(path):
+    return f"  chmod g+rwx {path}   (as zoid6 or root; jam is in group zoid6)"
+
+
+def run_zoid6_wheels(args):
+    """Build the zoid6 wheels (helper), then stage them and the installer into the account's home.
+
+    Copies exactly the manifest's wheels, removes any stale wheel the manifest no longer lists, and
+    copies INSTALL-zoid6-venv.sh from zoid6/scripts. Runs as jam through group zoid6. Stops before
+    any copy if the account directory is not writable by the group, with the fix.
     """
-    missing = [w for w in _zoid6_manifest_wheels() if not os.path.isfile(os.path.join(ZOID6_ACCOUNT_DIST, w))]
-    if missing:
-        io.echo("{red}zoid6.wheels: the account's wheels are not synced:{/all}")
-        for w in missing:
-            io.echo(f"  missing {ZOID6_ACCOUNT_DIST}/{w}")
-        io.echo("Run as root, then re-run this deploy:")
-        io.echo(f"  sudo sh {ZOID6_SYNC}")
+    # 1. Build the wheels from HEAD. The helper is run by this step; it is not an operator command.
+    io.echo(f"{{cyan}}helper:{{/all}} build_zoid6_wheels.sh (run by deploy zoid6.wheels)")
+    timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
+    build = _run_subprocess(["sh", ZOID6_BUILD_HELPER, ZOID6_STAGE], timeout=timeout, label="zoid6.wheels.build")
+    if build.stdout:
+        io.echo(build.stdout)
+
+    if not os.path.isdir(ZOID6_ACCOUNT_DIST):
+        io.echo(f"{{red}}zoid6.wheels: {ZOID6_ACCOUNT_DIST} does not exist.{{/all}}")
+        io.echo("Create it once, as zoid6 (or root):")
+        io.echo(f"  sudo -u zoid6 mkdir -p {ZOID6_ACCOUNT_DIST} && sudo chmod g+rwx {ZOID6_ACCOUNT_DIST}")
         raise DeployFailed(rc=2, label="zoid6.wheels")
-    io.echo(f"zoid6.wheels: {ZOID6_ACCOUNT_DIST} already matches the manifest")
-
-
-def preflight_zoid6_venv(args):
-    """Check the zoid6 account install can run; print the operator steps it needs.
-
-    Returns normally when the account's staged wheels match the manifest. Raises DeployFailed
-    with the exact commands to run when the sync is missing or stale. The account install itself
-    is run by the operator as zoid6 (deploytool cannot prompt for sudo), so this never runs it.
-    """
+    if not _writable_by_me(ZOID6_ACCOUNT_DIST):
+        io.echo(f"{{red}}zoid6.wheels: {ZOID6_ACCOUNT_DIST} is not writable by group zoid6.{{/all}}")
+        io.echo("Give the zoid6 group write access, once, as zoid6 or root:")
+        io.echo(_zoid6_fix_hint(ZOID6_ACCOUNT_DIST))
+        raise DeployFailed(rc=2, label="zoid6.wheels")
     wanted = _zoid6_manifest_wheels()
-    missing = [w for w in wanted if not os.path.isfile(os.path.join(ZOID6_ACCOUNT_DIST, w))]
-    if missing:
-        io.echo("{red}zoid6.venv: the account's wheels are not synced:{/all}")
-        for w in missing:
-            io.echo(f"  missing {ZOID6_ACCOUNT_DIST}/{w}")
-        io.echo("Run as root (the sync is a root step), then re-run:")
-        io.echo(f"  sudo sh {ZOID6_SYNC}")
+    for name in wanted:
+        src = os.path.join(ZOID6_STAGE, name)
+        if not os.path.isfile(src):
+            io.echo(f"{{red}}zoid6.wheels: manifest names {name}, which is not in {ZOID6_STAGE}.{{/all}}")
+            raise DeployFailed(rc=2, label="zoid6.wheels")
+    # Remove wheels the manifest no longer lists, so a stale build can never be installed.
+    listed = set(wanted)
+    for old in os.listdir(ZOID6_ACCOUNT_DIST):
+        if old.endswith(".whl") and old not in listed:
+            os.remove(os.path.join(ZOID6_ACCOUNT_DIST, old))
+            io.echo(f"zoid6.wheels: removed stale {old}")
+    for name in wanted:
+        shutil.copy2(os.path.join(ZOID6_STAGE, name), os.path.join(ZOID6_ACCOUNT_DIST, name))
+    shutil.copy2(ZOID6_INSTALLER_SRC, ZOID6_ACCOUNT_INSTALLER)
+    os.chmod(ZOID6_ACCOUNT_INSTALLER, 0o755)
+    io.echo(f"zoid6.wheels: {len(wanted)} wheels and the installer staged in {ZOID6_ACCOUNT_DIST}")
+
+
+def run_zoid6_venv(args):
+    """Install the staged wheels into the zoid6 venv, as jam through group zoid6.
+
+    Runs the account installer with DIST and VENV set. It needs the venv directory to be writable by
+    the group; when it is not, it stops with the fix instead of failing partway through pip.
+    """
+    if not os.path.isfile(ZOID6_ACCOUNT_INSTALLER):
+        io.echo("zoid6.venv: the installer is not staged; run deploy zoid6.wheels first.")
         raise DeployFailed(rc=2, label="zoid6.venv")
-    io.echo(f"zoid6.venv: {len(wanted)} wheels staged in {ZOID6_ACCOUNT_DIST}")
-    io.echo("Run the account install as zoid6, then re-run this deploy:")
-    io.echo(f"  sudo -u zoid6 sh {ZOID6_ACCOUNT_INSTALLER}")
+    if os.path.isdir(ZOID6_VENV) and not _writable_by_me(ZOID6_VENV):
+        io.echo(f"{{red}}zoid6.venv: {ZOID6_VENV} is not writable by group zoid6.{{/all}}")
+        io.echo("Give the zoid6 group write access, once, as zoid6 or root:")
+        io.echo(f"  sudo chmod -R g+rwX {ZOID6_VENV}")
+        raise DeployFailed(rc=2, label="zoid6.venv")
+    cmd = ["sh", ZOID6_ACCOUNT_INSTALLER]
+    env = os.environ.copy()
+    env["DIST"] = ZOID6_ACCOUNT_DIST
+    env["VENV"] = ZOID6_VENV
+    io.echo(f"{{cyan}}running:{{/all}} sh {ZOID6_ACCOUNT_INSTALLER} (DIST={ZOID6_ACCOUNT_DIST} VENV={ZOID6_VENV})")
+    timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
+    result = _run_subprocess(cmd, timeout=timeout, env=env, label="zoid6.venv")
+    if result.stdout:
+        io.echo(result.stdout)
+    io.echo("{green}zoid6.venv installed{/all}")
 
 
 def run_make_deploy(args, project, sub=None):
@@ -761,18 +804,16 @@ def run_make_deploy(args, project, sub=None):
     SystemExit propagate to the caller.
     """
     if (project, sub) == ("zoid6", "wheels"):
-        # sync-wheels needs root, and deploytool cannot prompt for sudo. Check the sync is already
-        # done (the account's wheels match the manifest) and print the root command otherwise.
         if getattr(args, "dry_run", False):
-            io.echo(f"{{yellow}}dry-run:{{/all}} zoid6.wheels preflight (sync-wheels runs as root)")
+            io.echo("{yellow}dry-run:{/all} zoid6.wheels: helper build_zoid6_wheels.sh, then stage into " + ZOID6_ACCOUNT_DIST)
             return 0
-        preflight_zoid6_wheels(args)
+        run_zoid6_wheels(args)
         return 0
     if (project, sub) == ("zoid6", "venv"):
         if getattr(args, "dry_run", False):
-            io.echo(f"{{yellow}}dry-run:{{/all}} zoid6.venv preflight, then: sudo -u zoid6 sh {ZOID6_ACCOUNT_INSTALLER}")
+            io.echo(f"{{yellow}}dry-run:{{/all}} zoid6.venv: sh {ZOID6_ACCOUNT_INSTALLER} (DIST={ZOID6_ACCOUNT_DIST} VENV={ZOID6_VENV})")
             return 0
-        preflight_zoid6_venv(args)
+        run_zoid6_venv(args)
         return 0
     project_dir = f"{SOURCE_BASE}/{PROJECT_DIRS.get(project, project)}"
     # When the (project, sub) pair has a MAKE_TARGET_ALIASES entry, the

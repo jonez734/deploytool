@@ -5,6 +5,10 @@ The engine is installed by bbsengine6's venv sub, not prod. Guards the venv path
 the dependency order, and that the zoid6 conditional table keeps its www edge.
 """
 
+import pathlib
+
+import pytest
+
 import deploytool.lib as lib
 
 
@@ -55,60 +59,82 @@ def _echoes(monkeypatch):
     return out
 
 
-def test_preflight_names_the_sync_when_wheels_are_missing(tmp_path, monkeypatch):
-    import pytest
+def test_zoid6_wheels_runs_the_labelled_helper_first(monkeypatch, tmp_path):
+    """The build is a helper run by deploy zoid6.wheels; it must be announced as one."""
     out = _echoes(monkeypatch)
-    names = ["bed-0.4.0.dev1-py3-none-any.whl"]
-    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, names)))
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "empty"))
-    with pytest.raises(lib.DeployFailed) as ei:
-        lib.preflight_zoid6_venv(object())
-    assert ei.value.rc == 2
-    text = "\n".join(out)
-    assert "sudo sh" in text and "sync-zoid6-wheels.sh" in text
+    calls = []
+    monkeypatch.setattr(lib, "_run_subprocess",
+                        lambda cmd, **k: calls.append(cmd) or type("R", (), {"stdout": ""})())
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "dist"))
+    (tmp_path / "dist").mkdir()
+    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, [])))
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_INSTALLER", str(tmp_path / "dist" / "INSTALL.sh"))
+    lib.run_zoid6_wheels(type("A", (), {"timeout": 5})())
+    assert calls and calls[0][0] == "sh" and calls[0][1].endswith("build_zoid6_wheels.sh")
+    assert any("helper:" in line and "build_zoid6_wheels.sh" in line for line in out)
 
 
-def test_preflight_names_the_account_install_when_synced(tmp_path, monkeypatch):
+def test_helper_is_labelled_as_deploy_run():
+    text = (pathlib.Path(lib.ZOID6_BUILD_HELPER)).read_text()
+    assert "HELPER" in text.splitlines()[1]
+    assert "run by" in text.splitlines()[1] and "deploy zoid6.wheels" in text.splitlines()[1]
+
+
+def test_zoid6_wheels_stops_before_copy_when_not_group_writable(monkeypatch, tmp_path):
+    """Jam writes the account home through group zoid6; a non-writable target stops with the fix."""
     out = _echoes(monkeypatch)
-    names = ["bed-0.4.0.dev1-py3-none-any.whl"]
     dist = tmp_path / "dist"
     dist.mkdir()
-    (dist / names[0]).write_bytes(b"")
-    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, names)))
     monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(dist))
-    lib.preflight_zoid6_venv(object())  # returns normally
-    assert f"sudo -u zoid6 sh {lib.ZOID6_ACCOUNT_INSTALLER}" in "\n".join(out)
+    monkeypatch.setattr(lib, "_writable_by_me", lambda path: False)
+    monkeypatch.setattr(lib, "_run_subprocess", lambda cmd, **k: type("R", (), {"stdout": ""})())
+    with pytest.raises(lib.DeployFailed) as ei:
+        lib.run_zoid6_wheels(type("A", (), {"timeout": 5})())
+    assert ei.value.label == "zoid6.wheels"
+    assert "chmod g+rwx" in "\n".join(out)
+
+
+def test_zoid6_venv_stops_when_venv_not_group_writable(monkeypatch, tmp_path):
+    out = _echoes(monkeypatch)
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    installer = tmp_path / "INSTALL.sh"
+    installer.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_INSTALLER", str(installer))
+    monkeypatch.setattr(lib, "ZOID6_VENV", str(venv))
+    monkeypatch.setattr(lib, "_writable_by_me", lambda path: False)
+    with pytest.raises(lib.DeployFailed) as ei:
+        lib.run_zoid6_venv(type("A", (), {"timeout": 5})())
+    assert ei.value.label == "zoid6.venv"
+    assert "chmod -R g+rwX" in "\n".join(out)
+
+
+def test_zoid6_venv_runs_the_installer_as_jam_with_dist_and_venv(monkeypatch, tmp_path):
+    _echoes(monkeypatch)
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    installer = tmp_path / "INSTALL.sh"
+    installer.write_text("#!/bin/sh\n")
+    seen = {}
+    def fake(cmd, *, env, **k):
+        seen["cmd"], seen["env"] = cmd, env
+        return type("R", (), {"stdout": "bed 0.4\n"})()
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_INSTALLER", str(installer))
+    monkeypatch.setattr(lib, "ZOID6_VENV", str(venv))
+    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "dist"))
+    monkeypatch.setattr(lib, "_writable_by_me", lambda path: True)
+    monkeypatch.setattr(lib, "_run_subprocess", fake)
+    lib.run_zoid6_venv(type("A", (), {"timeout": 5})())
+    assert seen["cmd"] == ["sh", str(installer)]
+    assert seen["env"]["VENV"] == str(venv)
+    assert seen["env"]["DIST"] == str(tmp_path / "dist")
 
 
 def test_zoid6_venv_dry_run_does_not_abort(monkeypatch):
     out = _echoes(monkeypatch)
-    monkeypatch.setattr(lib, "ZOID6_MANIFEST", "/nonexistent/manifest")
     args = type("A", (), {"dry_run": True})()
     assert lib.run_make_deploy(args, "zoid6", "venv") == 0
     assert "dry-run" in "\n".join(out)
-
-
-def test_zoid6_venv_is_preflighted_not_the_repo_make_target():
-    import inspect
-    src = inspect.getsource(lib.run_make_deploy)
-    assert '("zoid6", "venv")' in src and "preflight_zoid6_venv" in src
-
-
-def test_zoid6_wheels_preflight_names_the_root_sync_when_not_synced(tmp_path, monkeypatch):
-    out = _echoes(monkeypatch)
-    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, ["bed-0.4.0.dev1-py3-none-any.whl"])))
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "empty"))
-    import pytest
-    with pytest.raises(lib.DeployFailed) as ei:
-        lib.preflight_zoid6_wheels(object())
-    assert ei.value.label == "zoid6.wheels"
-    assert "sudo sh" in "\n".join(out)
-
-
-def test_zoid6_wheels_is_preflighted_not_the_root_make_target(monkeypatch):
-    import inspect
-    src = inspect.getsource(lib.run_make_deploy)
-    assert '("zoid6", "wheels")' in src and "preflight_zoid6_wheels" in src
 
 
 def test_zoid6_wheels_dry_run_does_not_abort(monkeypatch):
@@ -116,3 +142,9 @@ def test_zoid6_wheels_dry_run_does_not_abort(monkeypatch):
     args = type("A", (), {"dry_run": True})()
     assert lib.run_make_deploy(args, "zoid6", "wheels") == 0
     assert "dry-run" in "\n".join(out)
+
+
+def test_zoid6_steps_are_wired_in_run_make_deploy():
+    import inspect
+    src = inspect.getsource(lib.run_make_deploy)
+    assert "run_zoid6_wheels" in src and "run_zoid6_venv" in src
