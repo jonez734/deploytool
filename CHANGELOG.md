@@ -8,6 +8,14 @@ releases bump the patch). Dates are the day the commit landed on
 ## [Unreleased]
 
 ### Changed
+- **`VENV_LAYOUT` sets the install prefix.** For the `venv` and `prod` subs,
+  a non-`None` `VENV_LAYOUT` entry now sets `DEPLOY_PREFIX` when `--prefix`
+  is not given. Before, the entry was informational only, and an unflagged
+  `deploy letteredolive.venv` installed into the operator's `~/.venv`. An
+  explicit `--prefix` still overrides it.
+- **letteredolive venv is `/home/zoid6/venv`.** Replaces the retired
+  `/var/lib/zoid6/venv`. Its Makefile installs into `DEPLOY_PREFIX` and
+  reinstalls the engine and bed on every run.
 - **mistermcfeely Makefile split.** Sudo/FHS targets (sysusers, tmpfiles,
   systemd, etc, restorecon, and their uninstall counterparts) moved to
   `mistermcfeely/ops.mk`, included from the Makefile. New `stage` target

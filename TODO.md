@@ -106,7 +106,10 @@ item (for example, "implement zd6").
     (`tui` runs `deploy-tui`). Dependency on `getdate-next` in
     `bbsengine6/py/pyproject.toml` is kept on purpose. Not yet pushed or merged
     from `prep-pypi`. Name check on PyPI still pending before any `pypi` upload.
-[ ] [lrt] **letteredolive** — bare `make deploy`. Makefile 40 lines.
+[x] [lrt] **letteredolive** — `TARGETS` is `venv`, `prod`. `VENV_LAYOUT` is
+    `/home/zoid6/venv`, so `deploy letteredolive.venv` installs there without a
+    `--prefix`. Its Makefile reads `DEPLOY_PREFIX` (see CHANGELOG). Open: the
+    install must run as `zoid6` (`sudo -u zoid6`), because only `zoid6` writes the venv.
 [x] [mcf] **mistermcfeely** — `TARGETS` is `tui`, `prod`; both have rules
     (`deploy-tui`, `deploy-prod`). `VENV_LAYOUT` is `VENV_USER` for now; the
     per-service venv move is tracked in `mistermcfeely/TODO.md`. Done: sudo/FHS
@@ -707,3 +710,9 @@ endif
     `deploy-tui` / `deploy` targets actually do (e.g. `bed`
     may drop its per-service venv in dev mode in favor of
     the active venv).
+
+[ ] [teos] **teos.tui has no make target.** `TARGETS["teos"]` lists `tui`, but
+    `teos/Makefile` has no `tui` rule and `MAKE_TARGET_ALIASES` has no
+    `("teos", "tui")` entry, so `deploy teos.tui` fails. Found by an exact
+    rule-name check of every TARGETS entry. Fix in a future session: add a
+    `tui` rule to teos, or drop `tui` from `TARGETS["teos"]`.

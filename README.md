@@ -225,8 +225,11 @@ in `src/deploytool/lib.py`:
 - `MAKE_TARGET_ALIASES` — sub name → make target name (e.g.,
   `bed.tui` → `deploy-venv`)
 - `ALIASES`, `ALIAS_PATTERNS` — user-facing → canonical name map
-- `VENV_LAYOUT`, `VENV_USER` — informational claims about per-project
-  venv paths (registry only; Makefiles do the actual targeting)
+- `VENV_LAYOUT`, `VENV_USER` — per-project venv paths. For the `venv` and
+  `prod` subs, a non-`None` entry sets `DEPLOY_PREFIX` when `--prefix` is not
+  given, so the install goes to the registered venv, not the operator's
+  `~/.venv`. `--prefix` still overrides it. `None` (`VENV_USER`) leaves the
+  Makefile default in place.
 - `PROJECT_DIRS` — projects whose source tree lives outside
   `SOURCE_BASE/<name>`
 

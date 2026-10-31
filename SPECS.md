@@ -538,10 +538,11 @@ Encoded in `lib.py:65-85` (`VENV_USER`, `VENV_LAYOUT`).
 
 1. Apply `ALIASES` to canonicalize the project name.
 2. Look up `VENV_LAYOUT[canonical]`.
-3. If the value is a non-`None` string, return it. This is a CLAIM
-   about what the project's Makefile does on `deploy` — deploytool
-   does not plumb venv vars into `make`. Per-project Makefile
-   defaults and `pip` handle venv targeting.
+3. If the value is a non-`None` string, return it. For the `venv` and
+   `prod` subs, `run_make_deploy` sets `DEPLOY_PREFIX` to this path when
+   `--prefix` is not given, so the Makefile installs there. `--prefix`
+   overrides it. The Makefile must read `DEPLOY_PREFIX` (or derive its
+   interpreter from it) for the entry to take effect.
 4. If the value is `None` (the `VENV_USER` sentinel), resolve at
    runtime: `$VIRTUAL_ENV`, else `sys.prefix` if a venv is active,
    else error and exit.
