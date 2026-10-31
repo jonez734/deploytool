@@ -315,6 +315,8 @@ MAKE_TARGET_ALIASES = {
     # Local venv install of casino's wheel (casino/Makefile `venv`).
     ("casino", "venv"): "venv",
     ("teos", "prod"): "prod",
+    # empyre's Makefile names its deploy target plain `deploy`, not `deploy-deploy`.
+    ("empyre", "deploy"): "deploy",
     # teos.www is the vhost deploy: same target as teos.prod.
     ("teos", "www"): "prod",
     ("letteredolive", "venv"): "venv",
