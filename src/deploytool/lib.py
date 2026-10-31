@@ -269,6 +269,8 @@ TARGETS = {
     # `pypi`/`testpypi` upload to package indexes; opt-in (see OPT_IN_SUBS).
     "getdate_next": ["tui", "pypi", "testpypi"],
     "mistermcfeely": ["tui", "prod"],
+    # empyre deploys with its own Makefile `deploy` target (build, then `www prod`).
+    "empyre": ["deploy"],
 }
 
 # Sub-target -> bare make target name. When a (project, sub) pair has
