@@ -105,7 +105,7 @@ VENV_LAYOUT = {
     "bbsengine6": VENV_USER,
     "murdermotel": "/var/lib/zoid6/venv",
     "casino": VENV_USER,
-    "letteredolive": "/var/lib/zoid6/venv",
+    "letteredolive": "/home/zoid6/venv",
     "backuptools": VENV_USER,
     "deploytool": VENV_USER,
 }
