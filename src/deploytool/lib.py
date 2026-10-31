@@ -929,6 +929,10 @@ def run_make_deploy(args, project, sub=None):
     prefix = getattr(args, "prefix", None)
     if prefix:
         env["DEPLOY_PREFIX"] = prefix
+    elif sub in ("venv", "prod") and VENV_LAYOUT.get(ALIASES.get(project, project)):
+        # No --prefix: the venv/prod target goes to the project's registered venv (VENV_LAYOUT),
+        # not the operator's ~/.venv. A project with no registered path keeps the Makefile default.
+        env["DEPLOY_PREFIX"] = VENV_LAYOUT[ALIASES.get(project, project)]
     else:
         env.pop("DEPLOY_PREFIX", None)
 
