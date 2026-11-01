@@ -14,6 +14,9 @@ WHEEL := $(OUTDIR)$(PROJECT)-$(VERSION)-py3-none-any.whl
 ARTIFACTS = $(OUTDIR)$(PROJECT)-$(VERSION)*
 
 PYTHON ?= python3
+# The venv target installs into the prefix deploy passes as DEPLOY_PREFIX (deploy deploytool.venv
+# --prefix PATH). Without one, it installs into the invoking user's active venv via PYTHON.
+VENV_PYTHON ?= $(if $(DEPLOY_PREFIX),$(DEPLOY_PREFIX)/bin/python,$(PYTHON))
 VENV_DIR ?= $(if $(VIRTUAL_ENV),$(VIRTUAL_ENV),.venv)
 VENV_OWNER ?= $(USER)
 VENV_GROUP ?= $(USER)
@@ -27,7 +30,7 @@ REPO_DEST ?= /srv/repo/deploytool/
 PYPI_CONFIRM ?=
 TESTPYPI_URL = https://test.pypi.org/legacy/
 
-.PHONY: all clean build stage check version install deploy-tui deploy prod repo \
+.PHONY: all clean build stage check version install deploy-tui deploy venv prod repo \
 	install-venv uninstall-venv test pypi testpypi require-repo-dest verify-tokens
 
 all: help
@@ -137,6 +140,13 @@ VERIFY_INSTALL = \
 deploy-tui: install
 
 deploy: deploy-tui
+
+# venv: build the wheel and install it into the target venv (DEPLOY_PREFIX or the active venv).
+# Local only: touches no remote host, so it is safe as a dependency of other projects' venv subs.
+venv: build
+	@test -f $(WHEEL) || { echo "venv: $(WHEEL) not found after build" >&2; exit 1; }
+	$(VENV_PYTHON) -m pip install $(PIP_UPGRADE_FLAG) --no-deps $(WHEEL)
+	@echo "deploytool installed into $$(dirname "$(VENV_PYTHON)")/.."
 
 # Publish: install into the venv (tui), then copy this version's artifacts
 # to $(REPO_DEST). The only target that writes outside dist/ and the venv.

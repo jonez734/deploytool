@@ -156,9 +156,6 @@ CONDITIONAL_DEPENDENCIES = {
         # Same fix as casino.www above.
         "www": [("bbsengine6", "prod")],
     },
-    "deploytool": {
-        "tui": [("bbsengine6", "tui")],
-    },
     "letteredolive": {
         # letteredolive.venv installs the engine locally via bbsengine6's venv target. The bare
         # DEPENDENCIES["letteredolive"] edge is skipped for venv (see BARE_DEPS_SKIPPED_FOR), so
@@ -254,7 +251,7 @@ TARGETS = {
     # `prod` publishes to /srv/repo/deploytool/; `pypi`/`testpypi` upload
     # to the package indexes. All three are opt-in: none auto-expands
     # (see the drop gate in resolve()).
-    "deploytool": ["tui", "prod", "pypi", "testpypi"],
+    "deploytool": ["venv", "prod", "pypi", "testpypi"],
     "zoidoffice": ["tui", "www"],
     # identd is a separate, explicit step: it is not part of bed.prod.
     "bed": ["tui", "venv", "prod", "identd"],
@@ -327,6 +324,7 @@ MAKE_TARGET_ALIASES = {
     ("teos", "www"): "prod",
     ("letteredolive", "venv"): "venv",
     ("letteredolive", "prod"): "prod",
+    ("deploytool", "venv"): "venv",
 }
 
 

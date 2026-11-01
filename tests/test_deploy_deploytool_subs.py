@@ -1,4 +1,4 @@
-"""Pins the deploytool sub-target shape: tui, prod, pypi, testpypi.
+"""Pins the deploytool sub-target shape: venv, prod, pypi, testpypi.
 
 Regression guards for:
 
@@ -29,13 +29,25 @@ def _makefile() -> str:
     return MAKEFILE.read_text(encoding="utf-8")
 
 
-def test_deploytool_targets_are_tui_prod_pypi_testpypi():
+def test_deploytool_targets_are_venv_prod_pypi_testpypi():
     assert deploytool.lib.TARGETS["deploytool"] == [
-        "tui",
+        "venv",
         "prod",
         "pypi",
         "testpypi",
     ]
+
+
+def test_venv_sub_is_local_and_not_opt_in():
+    """deploytool.venv installs locally; it must not be an upload/publish sub."""
+    assert "venv" not in deploytool.lib.OPT_IN_SUBS
+    assert deploytool.lib.MAKE_TARGET_ALIASES[("deploytool", "venv")] == "venv"
+    assert re.search(r"^venv: build$", _makefile(), re.M)
+
+
+def test_venv_sub_resolves_without_pulling_uploads():
+    order = deploytool.lib.resolve(["deploytool.venv"], with_deps=False)
+    assert order == [("deploytool", "venv")]
 
 
 def test_upload_and_prod_subs_are_opt_in():
@@ -66,7 +78,7 @@ def test_bare_name_ignores_upload_subs_when_picking_default():
 
 def test_upload_subs_never_pulled_in_by_dependency_walk():
     """A project that depends on deploytool must not drag its uploads in."""
-    order = deploytool.lib.resolve(["deploytool.tui"], with_deps=True)
+    order = deploytool.lib.resolve(["deploytool.venv"], with_deps=True)
     assert all(sub not in deploytool.lib.OPT_IN_SUBS for _, sub in order)
 
 
