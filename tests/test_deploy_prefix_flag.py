@@ -64,10 +64,11 @@ def test_prefix_flag_sets_deploy_prefix_for_make(monkeypatch):
 
 
 @pytest.mark.unit
-def test_no_prefix_flag_strips_a_stale_shell_value(monkeypatch):
+def test_no_prefix_flag_uses_registered_layout_not_stale_shell_value(monkeypatch):
+    """Without --prefix, a stale shell DEPLOY_PREFIX is dropped and the VENV_LAYOUT path is used."""
     got = _run_with(monkeypatch, ["letteredolive.venv"], "letteredolive", "venv",
                     env_prefix="/stale/from/shell")
-    assert "DEPLOY_PREFIX" not in got["env"]
+    assert got["env"].get("DEPLOY_PREFIX") == "/home/zoid6/venv"
 
 
 @pytest.mark.unit
