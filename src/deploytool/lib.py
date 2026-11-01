@@ -45,7 +45,7 @@ PROJECT_DIRS = {
 # (project, sub) pairs whose bare DEPENDENCIES edges are NOT followed. Their explicit
 # CONDITIONAL_DEPENDENCIES edges say exactly what they need. bed.venv needs only
 # bbsengine6.venv; the bare bbsengine6 edge would run bbsengine6's default sub (prod).
-BARE_DEPS_SKIPPED_FOR = {("bed", "venv"), ("zoid6", "venv")}
+BARE_DEPS_SKIPPED_FOR = {("bed", "venv"), ("zoid6", "venv"), ("letteredolive", "venv")}
 
 # (project, sub) pairs whose make target runs as another account. zoid6.venv builds the venv in the
 # zoid6 account's home, so it runs as zoid6 (the install-wheels target checks this).
@@ -158,6 +158,12 @@ CONDITIONAL_DEPENDENCIES = {
     },
     "deploytool": {
         "tui": [("bbsengine6", "tui")],
+    },
+    "letteredolive": {
+        # letteredolive.venv installs the engine locally via bbsengine6's venv target. The bare
+        # DEPENDENCIES["letteredolive"] edge is skipped for venv (see BARE_DEPS_SKIPPED_FOR), so
+        # bbsengine6.prod (the merlin rsync) never runs for a letteredolive venv install.
+        "venv": [("bbsengine6", "venv")],
     },
     "bed": {
         "tui": [("bbsengine6", "tui")],
