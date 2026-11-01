@@ -156,6 +156,10 @@ CONDITIONAL_DEPENDENCIES = {
         # Same fix as casino.www above.
         "www": [("bbsengine6", "prod")],
     },
+    "deploytool": {
+        # deploytool.venv needs bbsengine6's local venv (the bare DEPENDENCIES["deploytool"] is empty).
+        "venv": [("bbsengine6", "venv")],
+    },
     "letteredolive": {
         # letteredolive.venv installs the engine locally via bbsengine6's venv target. The bare
         # DEPENDENCIES["letteredolive"] edge is skipped for venv (see BARE_DEPS_SKIPPED_FOR), so

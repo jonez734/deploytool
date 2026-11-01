@@ -82,6 +82,12 @@ def test_upload_subs_never_pulled_in_by_dependency_walk():
     assert all(sub not in deploytool.lib.OPT_IN_SUBS for _, sub in order)
 
 
+def test_venv_with_deps_builds_bbsengine6_venv_first():
+    """deploytool.venv --with-deps walks bbsengine6.venv (local) before deploytool.venv, and no bbsengine6 prod."""
+    order = deploytool.lib.resolve(["deploytool.venv"], with_deps=True)
+    assert order == [("bbsengine6", "venv"), ("deploytool", "venv")]
+
+
 def test_repo_default_is_srv_repo_deploytool():
     text = _makefile()
     assert re.search(r"^REPO_DEST \?= /srv/repo/deploytool/$", text, re.M)
