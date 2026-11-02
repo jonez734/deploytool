@@ -727,10 +727,12 @@ ZOID6_HOME = "/home/zoid6"
 ZOID6_ACCOUNT_DIST = f"{ZOID6_HOME}/dist-wheels"
 ZOID6_VENV = f"{ZOID6_HOME}/venv"
 ZOID6_ACCOUNT_INSTALLER = f"{ZOID6_ACCOUNT_DIST}/INSTALL-zoid6-venv.sh"
-ZOID6_STAGE = "/home/opencode/data/work/dist-wheels"
-ZOID6_MANIFEST = f"{ZOID6_STAGE}/zoid6-wheels.txt"
-ZOID6_INSTALLER_SRC = "/home/opencode/data/work/zoid6/scripts/INSTALL-zoid6-venv.sh"
-ZOID6_BUILD_HELPER = "/home/opencode/data/work/zoid6/scripts/build_zoid6_wheels.sh"
+# Source-tree paths follow SOURCE_BASE (DEPLOYTOOL_SOURCE_BASE), not a fixed dev-machine path.
+# The staging directory can be set on its own with DEPLOYTOOL_ZOID6_STAGE.
+ZOID6_STAGE = os.environ.get("DEPLOYTOOL_ZOID6_STAGE", os.path.join(SOURCE_BASE, "dist-wheels"))
+ZOID6_MANIFEST = os.path.join(ZOID6_STAGE, "zoid6-wheels.txt")
+ZOID6_INSTALLER_SRC = os.path.join(SOURCE_BASE, "zoid6", "scripts", "INSTALL-zoid6-venv.sh")
+ZOID6_BUILD_HELPER = os.path.join(SOURCE_BASE, "zoid6", "scripts", "build_zoid6_wheels.sh")
 
 
 def _zoid6_manifest_wheels():
