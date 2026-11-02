@@ -234,7 +234,7 @@ CONDITIONAL_DEPENDENCIES = {
 
 TARGETS = {
     # identd is a separate, explicit step: it is not part of zoid6.prod.
-    "zoid6": ["www", "tui", "prod", "shared", "identd", "wheels", "venv"],
+    "zoid6": ["www", "tui", "prod", "shared", "identd", "root", "wheels", "venv"],
     "letteredolive": ["venv", "prod"],
     # `prod` (added 2026-09-29) — the full teos stack. Aliased via
     # MAKE_TARGET_ALIASES[("teos","prod")] = "prod" (the `prod:` rule
@@ -307,6 +307,9 @@ MAKE_TARGET_ALIASES = {
     # Identd mapping for the daemon login: appends managed lines to pg_hba.conf and
     # pg_ident.conf, then reloads postgresql-18. Run explicitly; not part of prod.
     ("zoid6", "identd"): "install-identd",
+    # Root-only host setup: sysusers, tmpfiles and identd. Run explicitly as root;
+    # not part of zoid6.prod (which is the web deploy). The account work is zoid6 --install.
+    ("zoid6", "root"): "install-root",
     ("zoid6", "wheels"): "sync-wheels",
     ("zoid6", "venv"): "install-wheels",
     ("bed", "identd"): "install-identd",
