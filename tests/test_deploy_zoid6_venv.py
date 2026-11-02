@@ -145,9 +145,12 @@ def test_zoid6_wheels_dry_run_does_not_abort(monkeypatch):
 
 
 def test_zoid6_steps_are_wired_in_run_make_deploy():
+    """run_make_deploy routes bed-instance subs through the generic functions, which zoid6 uses."""
     import inspect
     src = inspect.getsource(lib.run_make_deploy)
-    assert "run_zoid6_wheels" in src and "run_zoid6_venv" in src
+    assert "BED_INSTANCES" in src
+    assert "run_bed_instance_wheels" in src and "run_bed_instance_venv" in src
+    assert "zoid6" in lib.BED_INSTANCES
 
 
 def test_stage_file_replaces_without_copying_metadata(tmp_path, monkeypatch):
@@ -167,5 +170,5 @@ def test_stage_file_replaces_without_copying_metadata(tmp_path, monkeypatch):
 
 def test_zoid6_staging_uses_stage_file_not_copy2():
     import inspect
-    src = inspect.getsource(lib.run_zoid6_wheels)
+    src = inspect.getsource(lib.run_bed_instance_wheels)
     assert "_stage_file(" in src and "copy2" not in src

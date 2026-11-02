@@ -735,9 +735,40 @@ ZOID6_INSTALLER_SRC = os.path.join(SOURCE_BASE, "zoid6", "scripts", "INSTALL-zoi
 ZOID6_BUILD_HELPER = os.path.join(SOURCE_BASE, "zoid6", "scripts", "build_zoid6_wheels.sh")
 
 
-def _zoid6_manifest_wheels():
-    """The wheel filenames the zoid6 manifest lists (comments and blank lines skipped)."""
-    with open(ZOID6_MANIFEST) as fh:
+def _zoid6_settings():
+    return {
+        "account": "zoid6",
+        "group": "zoid6",
+        "account_dist": ZOID6_ACCOUNT_DIST,
+        "venv": ZOID6_VENV,
+        "installer": ZOID6_ACCOUNT_INSTALLER,
+        "installer_src": ZOID6_INSTALLER_SRC,
+        "build_helper": ZOID6_BUILD_HELPER,
+        "stage": ZOID6_STAGE,
+        "manifest": ZOID6_MANIFEST,
+    }
+
+
+# Bed instances that deploy stages wheels for and installs into a venv. Each entry is a callable that
+# returns the settings, read at call time (see _instance_settings). An instance is a daemon account:
+#   account         the OS account that owns the home (its dist-wheels and venv live there)
+#   group           the group that may write those paths; the deploy user is a member
+#   account_dist    where the account receives staged wheels and the installer
+#   venv            the venv the installer writes
+#   installer       the installer staged into account_dist
+#   installer_src   the installer's source in the instance's repo
+#   build_helper    builds the instance's wheels into stage and rewrites the manifest
+#   stage           the deploy user's staging directory for built wheels
+#   manifest        the wheel list the installer reads (one wheel filename per line)
+# Add an instance by adding an entry; nothing else in deploy needs to change.
+BED_INSTANCES = {
+    "zoid6": _zoid6_settings,
+}
+
+
+def _manifest_wheels(manifest):
+    """The wheel filenames a manifest lists (comments and blank lines skipped)."""
+    with open(manifest) as fh:
         return [ln.strip() for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
 
 
@@ -745,8 +776,8 @@ def _writable_by_me(path):
     return os.path.isdir(path) and os.access(path, os.W_OK | os.X_OK)
 
 
-def _zoid6_fix_hint(path):
-    return f"  chmod g+rwx {path}   (as zoid6 or root; jam is in group zoid6)"
+def _group_fix_hint(path, group):
+    return f"  chmod g+rwx {path}   (as the account owner or root; the deploy user must be in group {group})"
 
 
 def _stage_file(src, dst, mode=0o644):
@@ -762,72 +793,100 @@ def _stage_file(src, dst, mode=0o644):
     os.replace(tmp, dst)
 
 
-def run_zoid6_wheels(args):
-    """Build the zoid6 wheels (helper), then stage them and the installer into the account's home.
+def _instance_settings(name):
+    """The settings for bed instance ``name``, read from BED_INSTANCES at call time.
 
-    Copies exactly the manifest's wheels, removes any stale wheel the manifest no longer lists, and
-    copies INSTALL-zoid6-venv.sh from zoid6/scripts. Runs as jam through group zoid6. Stops before
-    any copy if the account directory is not writable by the group, with the fix.
+    Reading at call time (not import time) lets a test or a site override a path by patching the
+    module constants that BED_INSTANCES is built from.
     """
+    if name not in BED_INSTANCES:
+        raise KeyError(f"unknown bed instance {name!r}")
+    return BED_INSTANCES[name]()
+
+
+def run_bed_instance_wheels(name, args):
+    """Build a bed instance's wheels, then stage them and its installer into the account's home.
+
+    Generic over BED_INSTANCES. Copies exactly the manifest's wheels, removes any stale wheel the
+    manifest no longer lists, and copies the instance installer. Runs as the deploy user through the
+    account's group. Stops before any copy if the account directory is not writable by that group.
+    """
+    s = _instance_settings(name)
+    label = f"{name}.wheels"
     # 1. Build the wheels from HEAD. The helper is run by this step; it is not an operator command.
-    io.echo(f"{{cyan}}helper:{{/all}} build_zoid6_wheels.sh (run by deploy zoid6.wheels)")
+    io.echo(f"{{cyan}}helper:{{/all}} {os.path.basename(s['build_helper'])} (run by deploy {label})")
     timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
-    build = _run_subprocess(["sh", ZOID6_BUILD_HELPER, ZOID6_STAGE], timeout=timeout, label="zoid6.wheels.build")
+    build = _run_subprocess(["sh", s["build_helper"], s["stage"]], timeout=timeout, label=f"{label}.build")
     if build.stdout:
         io.echo(build.stdout)
 
-    if not os.path.isdir(ZOID6_ACCOUNT_DIST):
-        io.echo(f"{{red}}zoid6.wheels: {ZOID6_ACCOUNT_DIST} does not exist.{{/all}}")
-        io.echo("Create it once, as zoid6 (or root):")
-        io.echo(f"  sudo -u zoid6 mkdir -p {ZOID6_ACCOUNT_DIST} && sudo chmod g+rwx {ZOID6_ACCOUNT_DIST}")
-        raise DeployFailed(rc=2, label="zoid6.wheels")
-    if not _writable_by_me(ZOID6_ACCOUNT_DIST):
-        io.echo(f"{{red}}zoid6.wheels: {ZOID6_ACCOUNT_DIST} is not writable by group zoid6.{{/all}}")
-        io.echo("Give the zoid6 group write access, once, as zoid6 or root:")
-        io.echo(_zoid6_fix_hint(ZOID6_ACCOUNT_DIST))
-        raise DeployFailed(rc=2, label="zoid6.wheels")
-    wanted = _zoid6_manifest_wheels()
-    for name in wanted:
-        src = os.path.join(ZOID6_STAGE, name)
+    dist = s["account_dist"]
+    group = s["group"]
+    if not os.path.isdir(dist):
+        io.echo(f"{{red}}{label}: {dist} does not exist.{{/all}}")
+        io.echo(f"Create it once, as {name} (or root):")
+        io.echo(f"  sudo -u {s['account']} mkdir -p {dist} && sudo chmod g+rwx {dist}")
+        raise DeployFailed(rc=2, label=label)
+    if not _writable_by_me(dist):
+        io.echo(f"{{red}}{label}: {dist} is not writable by group {group}.{{/all}}")
+        io.echo(f"Give the {group} group write access, once, as {s['account']} or root:")
+        io.echo(_group_fix_hint(dist, group))
+        raise DeployFailed(rc=2, label=label)
+    wanted = _manifest_wheels(s["manifest"])
+    for wheel in wanted:
+        src = os.path.join(s["stage"], wheel)
         if not os.path.isfile(src):
-            io.echo(f"{{red}}zoid6.wheels: manifest names {name}, which is not in {ZOID6_STAGE}.{{/all}}")
-            raise DeployFailed(rc=2, label="zoid6.wheels")
+            io.echo(f"{{red}}{label}: manifest names {wheel}, which is not in {s['stage']}.{{/all}}")
+            raise DeployFailed(rc=2, label=label)
     # Remove wheels the manifest no longer lists, so a stale build can never be installed.
     listed = set(wanted)
-    for old in os.listdir(ZOID6_ACCOUNT_DIST):
+    for old in os.listdir(dist):
         if old.endswith(".whl") and old not in listed:
-            os.remove(os.path.join(ZOID6_ACCOUNT_DIST, old))
-            io.echo(f"zoid6.wheels: removed stale {old}")
-    for name in wanted:
-        _stage_file(os.path.join(ZOID6_STAGE, name), os.path.join(ZOID6_ACCOUNT_DIST, name), 0o644)
-    _stage_file(ZOID6_INSTALLER_SRC, ZOID6_ACCOUNT_INSTALLER, 0o755)
-    io.echo(f"zoid6.wheels: {len(wanted)} wheels and the installer staged in {ZOID6_ACCOUNT_DIST}")
+            os.remove(os.path.join(dist, old))
+            io.echo(f"{label}: removed stale {old}")
+    for wheel in wanted:
+        _stage_file(os.path.join(s["stage"], wheel), os.path.join(dist, wheel), 0o644)
+    _stage_file(s["installer_src"], s["installer"], 0o755)
+    io.echo(f"{label}: {len(wanted)} wheels and the installer staged in {dist}")
 
 
-def run_zoid6_venv(args):
-    """Install the staged wheels into the zoid6 venv, as jam through group zoid6.
+def run_bed_instance_venv(name, args):
+    """Install a bed instance's staged wheels into its venv, as the deploy user through its group.
 
     Runs the account installer with DIST and VENV set. It needs the venv directory to be writable by
     the group; when it is not, it stops with the fix instead of failing partway through pip.
     """
-    if not os.path.isfile(ZOID6_ACCOUNT_INSTALLER):
-        io.echo("zoid6.venv: the installer is not staged; run deploy zoid6.wheels first.")
-        raise DeployFailed(rc=2, label="zoid6.venv")
-    if os.path.isdir(ZOID6_VENV) and not _writable_by_me(ZOID6_VENV):
-        io.echo(f"{{red}}zoid6.venv: {ZOID6_VENV} is not writable by group zoid6.{{/all}}")
-        io.echo("Give the zoid6 group write access, once, as zoid6 or root:")
-        io.echo(f"  sudo chmod -R g+rwX {ZOID6_VENV}")
-        raise DeployFailed(rc=2, label="zoid6.venv")
-    cmd = ["sh", ZOID6_ACCOUNT_INSTALLER]
+    s = _instance_settings(name)
+    label = f"{name}.venv"
+    if not os.path.isfile(s["installer"]):
+        io.echo(f"{label}: the installer is not staged; run deploy {name}.wheels first.")
+        raise DeployFailed(rc=2, label=label)
+    venv = s["venv"]
+    if os.path.isdir(venv) and not _writable_by_me(venv):
+        io.echo(f"{{red}}{label}: {venv} is not writable by group {s['group']}.{{/all}}")
+        io.echo(f"Give the {s['group']} group write access, once, as {s['account']} or root:")
+        io.echo(f"  sudo chmod -R g+rwX {venv}")
+        raise DeployFailed(rc=2, label=label)
+    cmd = ["sh", s["installer"]]
     env = os.environ.copy()
-    env["DIST"] = ZOID6_ACCOUNT_DIST
-    env["VENV"] = ZOID6_VENV
-    io.echo(f"{{cyan}}running:{{/all}} sh {ZOID6_ACCOUNT_INSTALLER} (DIST={ZOID6_ACCOUNT_DIST} VENV={ZOID6_VENV})")
+    env["DIST"] = s["account_dist"]
+    env["VENV"] = venv
+    io.echo(f"{{cyan}}running:{{/all}} sh {s['installer']} (DIST={s['account_dist']} VENV={venv})")
     timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
-    result = _run_subprocess(cmd, timeout=timeout, env=env, label="zoid6.venv")
+    result = _run_subprocess(cmd, timeout=timeout, env=env, label=label)
     if result.stdout:
         io.echo(result.stdout)
-    io.echo("{green}zoid6.venv installed{/all}")
+    io.echo(f"{{green}}{label} installed{{/all}}")
+
+
+def run_zoid6_wheels(args):
+    """zoid6.wheels. Kept as a name for existing call sites; see run_bed_instance_wheels."""
+    return run_bed_instance_wheels("zoid6", args)
+
+
+def run_zoid6_venv(args):
+    """zoid6.venv. Kept as a name for existing call sites; see run_bed_instance_venv."""
+    return run_bed_instance_venv("zoid6", args)
 
 
 def run_make_deploy(args, project, sub=None):
@@ -837,17 +896,18 @@ def run_make_deploy(args, project, sub=None):
     subprocess exit, timeout, or environment error. KeyboardInterrupt and
     SystemExit propagate to the caller.
     """
-    if (project, sub) == ("zoid6", "wheels"):
+    if project in BED_INSTANCES and sub in ("wheels", "venv"):
+        s = _instance_settings(project)
         if getattr(args, "dry_run", False):
-            io.echo("{yellow}dry-run:{/all} zoid6.wheels: helper build_zoid6_wheels.sh, then stage into " + ZOID6_ACCOUNT_DIST)
+            if sub == "wheels":
+                io.echo(f"{{yellow}}dry-run:{{/all}} {project}.wheels: helper {os.path.basename(s['build_helper'])}, then stage into {s['account_dist']}")
+            else:
+                io.echo(f"{{yellow}}dry-run:{{/all}} {project}.venv: sh {s['installer']} (DIST={s['account_dist']} VENV={s['venv']})")
             return 0
-        run_zoid6_wheels(args)
-        return 0
-    if (project, sub) == ("zoid6", "venv"):
-        if getattr(args, "dry_run", False):
-            io.echo(f"{{yellow}}dry-run:{{/all}} zoid6.venv: sh {ZOID6_ACCOUNT_INSTALLER} (DIST={ZOID6_ACCOUNT_DIST} VENV={ZOID6_VENV})")
-            return 0
-        run_zoid6_venv(args)
+        if sub == "wheels":
+            run_bed_instance_wheels(project, args)
+        else:
+            run_bed_instance_venv(project, args)
         return 0
     project_dir = f"{SOURCE_BASE}/{PROJECT_DIRS.get(project, project)}"
     # When the (project, sub) pair has a MAKE_TARGET_ALIASES entry, the
