@@ -109,6 +109,8 @@ VENV_LAYOUT = {
     "murdermotel": "/var/lib/zoid6/venv",
     "casino": VENV_USER,
     "letteredolive": "/home/zoid6/venv",
+    # aolbonics (jargon) is a sub-router that the zoid6 bed daemon loads, so it installs into zoid6's venv.
+    "aolbonics": "/home/zoid6/venv",
     "backuptools": VENV_USER,
     "deploytool": VENV_USER,
 }
