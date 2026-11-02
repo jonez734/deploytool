@@ -865,7 +865,10 @@ def run_bed_instance_wheels(name, args):
     for wheel in wanted:
         _stage_file(os.path.join(s["stage"], wheel), os.path.join(dist, wheel), 0o644)
     _stage_file(s["installer_src"], s["installer"], 0o755)
-    io.echo(f"{label}: {len(wanted)} wheels and the installer staged in {dist}")
+    # The installer reads the manifest from the account directory to choose its wheels. Copy it with the
+    # wheels, or the installer falls back to a stale manifest and refuses to run.
+    _stage_file(s["manifest"], os.path.join(dist, os.path.basename(s["manifest"])), 0o644)
+    io.echo(f"{label}: {len(wanted)} wheels, the manifest, and the installer staged in {dist}")
 
 
 def run_bed_instance_venv(name, args):
