@@ -47,7 +47,7 @@ PROJECT_DIRS = {
 # (project, sub) pairs whose bare DEPENDENCIES edges are NOT followed. Their explicit
 # CONDITIONAL_DEPENDENCIES edges say exactly what they need. bed.venv needs only
 # bbsengine6.venv; the bare bbsengine6 edge would run bbsengine6's default sub (prod).
-BARE_DEPS_SKIPPED_FOR = {("bed", "venv"), ("zoid6", "venv"), ("letteredolive", "venv")}
+BARE_DEPS_SKIPPED_FOR = {("bed", "venv"), ("zoid6", "venv"), ("letteredolive", "venv"), ("aolbonics", "venv")}
 
 # (project, sub) pairs whose make target runs as another account. zoid6.venv builds the venv in the
 # zoid6 account's home, so it runs as zoid6 (the install-wheels target checks this).
@@ -73,7 +73,8 @@ DEPENDENCIES = {
     "backuptools": ["bbsengine6"],
     "deploytool": [],
     "atlas": [],
-    "aolbonics": ["bed", "zoid6"],
+    # jargon's client needs bed; its sub-router needs zoid6 only on the host that runs the zoid6 daemon.
+    "aolbonics": ["bed"],
 }
 
 ALIASES = {
@@ -109,8 +110,9 @@ VENV_LAYOUT = {
     "murdermotel": "/var/lib/zoid6/venv",
     "casino": VENV_USER,
     "letteredolive": "/home/zoid6/venv",
-    # aolbonics (jargon) is a sub-router that the zoid6 bed daemon loads, so it installs into zoid6's venv.
-    "aolbonics": "/home/zoid6/venv",
+    # aolbonics installs into each BBS's active venv (or --prefix). Hosts that run the zoid6 daemon pass
+    # --prefix /home/zoid6/venv; no host path is fixed here.
+    "aolbonics": VENV_USER,
     "backuptools": VENV_USER,
     "deploytool": VENV_USER,
 }
@@ -176,6 +178,11 @@ CONDITIONAL_DEPENDENCIES = {
         # bed.venv installs the engine locally via bbsengine6's venv target. The bare
         # DEPENDENCIES["bed"] edge is skipped for venv (see BARE_DEPS_SKIPPED_FOR), so
         # bbsengine6.prod (the merlin rsync) never runs for a bed venv install.
+        "venv": [("bbsengine6", "venv")],
+    },
+    # aolbonics.venv needs the engine installed locally (bbsengine6's venv target), not bbsengine6's prod
+    # umbrella. The bare DEPENDENCIES["aolbonics"] edge is skipped for venv (BARE_DEPS_SKIPPED_FOR).
+    "aolbonics": {
         "venv": [("bbsengine6", "venv")],
     },
     # @since 2026-09-27 — `deploy teos.www` must land zoid6's shared

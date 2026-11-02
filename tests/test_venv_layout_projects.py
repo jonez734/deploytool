@@ -2,6 +2,7 @@
 
 A project is listed only when it installs files into a venv. Projects with no install step yet are left out
 until they gain one; mistermcfeely and murdermotel stay listed because they will need a .venv sub to deploy.
+aolbonics is listed because its venv sub installs into whichever venv deploy targets (VENV_USER, or --prefix).
 """
 
 import importlib
@@ -20,6 +21,7 @@ EXPECTED = {
     "bbsengine6",
     "mistermcfeely",
     "murdermotel",
+    "aolbonics",
 }
 
 
