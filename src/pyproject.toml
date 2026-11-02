@@ -41,6 +41,9 @@ Homepage = "http://projects.zoidtechnologies.com/deploytool/"
 where = ["."]
 include = ["deploytool*"]
 
+[tool.setuptools.package-data]
+deploytool = ["bed_instances.json"]
+
 [tool.setuptools.dynamic]
 version = { attr = "deploytool._version.__version__" }
 

@@ -59,33 +59,33 @@ def _echoes(monkeypatch):
     return out
 
 
-def test_zoid6_wheels_runs_the_labelled_helper_first(monkeypatch, tmp_path):
+def test_zoid6_wheels_runs_the_labelled_helper_first(monkeypatch, tmp_path, instance_settings):
     """The build is a helper run by deploy zoid6.wheels; it must be announced as one."""
     out = _echoes(monkeypatch)
     calls = []
     monkeypatch.setattr(lib, "_run_subprocess",
                         lambda cmd, **k: calls.append(cmd) or type("R", (), {"stdout": ""})())
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "dist"))
     (tmp_path / "dist").mkdir()
-    monkeypatch.setattr(lib, "ZOID6_MANIFEST", str(_manifest(tmp_path, [])))
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_INSTALLER", str(tmp_path / "dist" / "INSTALL.sh"))
+    instance_settings("zoid6", account_dist=str(tmp_path / "dist"),
+                      manifest=str(_manifest(tmp_path, [])),
+                      installer=str(tmp_path / "dist" / "INSTALL.sh"))
     lib.run_zoid6_wheels(type("A", (), {"timeout": 5})())
     assert calls and calls[0][0] == "sh" and calls[0][1].endswith("build_zoid6_wheels.sh")
     assert any("helper:" in line and "build_zoid6_wheels.sh" in line for line in out)
 
 
 def test_helper_is_labelled_as_deploy_run():
-    text = (pathlib.Path(lib.ZOID6_BUILD_HELPER)).read_text()
+    text = (pathlib.Path(lib._instance_settings("zoid6")["build_helper"])).read_text()
     assert "HELPER" in text.splitlines()[1]
     assert "run by" in text.splitlines()[1] and "deploy zoid6.wheels" in text.splitlines()[1]
 
 
-def test_zoid6_wheels_stops_before_copy_when_not_group_writable(monkeypatch, tmp_path):
+def test_zoid6_wheels_stops_before_copy_when_not_group_writable(monkeypatch, tmp_path, instance_settings):
     """Jam writes the account home through group zoid6; a non-writable target stops with the fix."""
     out = _echoes(monkeypatch)
     dist = tmp_path / "dist"
     dist.mkdir()
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(dist))
+    instance_settings("zoid6", account_dist=str(dist))
     monkeypatch.setattr(lib, "_writable_by_me", lambda path: False)
     monkeypatch.setattr(lib, "_run_subprocess", lambda cmd, **k: type("R", (), {"stdout": ""})())
     with pytest.raises(lib.DeployFailed) as ei:
@@ -94,14 +94,13 @@ def test_zoid6_wheels_stops_before_copy_when_not_group_writable(monkeypatch, tmp
     assert "chmod g+rwx" in "\n".join(out)
 
 
-def test_zoid6_venv_stops_when_venv_not_group_writable(monkeypatch, tmp_path):
+def test_zoid6_venv_stops_when_venv_not_group_writable(monkeypatch, tmp_path, instance_settings):
     out = _echoes(monkeypatch)
     venv = tmp_path / "venv"
     venv.mkdir()
     installer = tmp_path / "INSTALL.sh"
     installer.write_text("#!/bin/sh\n")
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_INSTALLER", str(installer))
-    monkeypatch.setattr(lib, "ZOID6_VENV", str(venv))
+    instance_settings("zoid6", installer=str(installer), venv=str(venv))
     monkeypatch.setattr(lib, "_writable_by_me", lambda path: False)
     with pytest.raises(lib.DeployFailed) as ei:
         lib.run_zoid6_venv(type("A", (), {"timeout": 5})())
@@ -109,7 +108,7 @@ def test_zoid6_venv_stops_when_venv_not_group_writable(monkeypatch, tmp_path):
     assert "chmod -R g+rwX" in "\n".join(out)
 
 
-def test_zoid6_venv_runs_the_installer_as_jam_with_dist_and_venv(monkeypatch, tmp_path):
+def test_zoid6_venv_runs_the_installer_as_jam_with_dist_and_venv(monkeypatch, tmp_path, instance_settings):
     _echoes(monkeypatch)
     venv = tmp_path / "venv"
     venv.mkdir()
@@ -119,9 +118,7 @@ def test_zoid6_venv_runs_the_installer_as_jam_with_dist_and_venv(monkeypatch, tm
     def fake(cmd, *, env, **k):
         seen["cmd"], seen["env"] = cmd, env
         return type("R", (), {"stdout": "bed 0.4\n"})()
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_INSTALLER", str(installer))
-    monkeypatch.setattr(lib, "ZOID6_VENV", str(venv))
-    monkeypatch.setattr(lib, "ZOID6_ACCOUNT_DIST", str(tmp_path / "dist"))
+    instance_settings("zoid6", installer=str(installer), venv=str(venv), account_dist=str(tmp_path / "dist"))
     monkeypatch.setattr(lib, "_writable_by_me", lambda path: True)
     monkeypatch.setattr(lib, "_run_subprocess", fake)
     lib.run_zoid6_venv(type("A", (), {"timeout": 5})())
@@ -148,9 +145,9 @@ def test_zoid6_steps_are_wired_in_run_make_deploy():
     """run_make_deploy routes bed-instance subs through the generic functions, which zoid6 uses."""
     import inspect
     src = inspect.getsource(lib.run_make_deploy)
-    assert "BED_INSTANCES" in src
+    assert "_instance_settings" in src or "_bed_instance_names" in src
     assert "run_bed_instance_wheels" in src and "run_bed_instance_venv" in src
-    assert "zoid6" in lib.BED_INSTANCES
+    assert "zoid6" in lib._bed_instance_names()
 
 
 def test_stage_file_replaces_without_copying_metadata(tmp_path, monkeypatch):

@@ -1,0 +1,15 @@
+{
+  "_comment": "Bed instances deploy stages wheels for and installs into a venv. Keys are instance names (the <name> in deploy <name>.wheels). Paths may use {source_base} (DEPLOYTOOL_SOURCE_BASE) and {stage} (the instance's stage directory). An optional stage_env names an environment variable that overrides the stage directory for this instance. Fields: account = the OS account that owns the home; group = the group that may write its dist-wheels and venv (the deploy user is a member); account_dist = where the account receives staged wheels and the installer; venv = the venv the installer writes; installer = the installer staged into account_dist; installer_src = the installer's source in the instance repo; build_helper = builds the wheels into stage and rewrites the manifest; stage = the deploy user's staging directory; manifest = the wheel list the installer reads.",
+  "zoid6": {
+    "account": "zoid6",
+    "group": "zoid6",
+    "account_dist": "/home/zoid6/dist-wheels",
+    "venv": "/home/zoid6/venv",
+    "installer": "/home/zoid6/dist-wheels/INSTALL-zoid6-venv.sh",
+    "installer_src": "{source_base}/zoid6/scripts/INSTALL-zoid6-venv.sh",
+    "build_helper": "{source_base}/zoid6/scripts/build_zoid6_wheels.sh",
+    "stage": "{source_base}/dist-wheels",
+    "stage_env": "DEPLOYTOOL_ZOID6_STAGE",
+    "manifest": "{stage}/zoid6-wheels.txt"
+  }
+}

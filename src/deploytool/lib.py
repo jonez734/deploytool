@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import shutil
 import re
@@ -720,50 +721,53 @@ def _run_subprocess(cmd, *, cwd=None, timeout, env=None, label):
     return result
 
 
-# The zoid6 account's install, run by deploy as jam. Jam is in the zoid6 group, so the account home
-# and its dist-wheels and venv are written through group access, with no sudo. Each step checks its
-# target is writable first, and stops with the exact fix when it is not.
-ZOID6_HOME = "/home/zoid6"
-ZOID6_ACCOUNT_DIST = f"{ZOID6_HOME}/dist-wheels"
-ZOID6_VENV = f"{ZOID6_HOME}/venv"
-ZOID6_ACCOUNT_INSTALLER = f"{ZOID6_ACCOUNT_DIST}/INSTALL-zoid6-venv.sh"
-# Source-tree paths follow SOURCE_BASE (DEPLOYTOOL_SOURCE_BASE), not a fixed dev-machine path.
-# The staging directory can be set on its own with DEPLOYTOOL_ZOID6_STAGE.
-ZOID6_STAGE = os.environ.get("DEPLOYTOOL_ZOID6_STAGE", os.path.join(SOURCE_BASE, "dist-wheels"))
-ZOID6_MANIFEST = os.path.join(ZOID6_STAGE, "zoid6-wheels.txt")
-ZOID6_INSTALLER_SRC = os.path.join(SOURCE_BASE, "zoid6", "scripts", "INSTALL-zoid6-venv.sh")
-ZOID6_BUILD_HELPER = os.path.join(SOURCE_BASE, "zoid6", "scripts", "build_zoid6_wheels.sh")
+# Bed instances (accounts that deploy stages wheels for and installs into a venv) are defined in
+# bed_instances.json, next to this module. The file is read on each use, so it is never stale, and
+# adding an instance is a JSON edit. See that file's "_comment" for the fields.
+BED_INSTANCES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bed_instances.json")
+_INSTANCE_FIELDS = (
+    "account", "group", "account_dist", "venv", "installer", "installer_src",
+    "build_helper", "stage", "manifest",
+)
 
 
-def _zoid6_settings():
-    return {
-        "account": "zoid6",
-        "group": "zoid6",
-        "account_dist": ZOID6_ACCOUNT_DIST,
-        "venv": ZOID6_VENV,
-        "installer": ZOID6_ACCOUNT_INSTALLER,
-        "installer_src": ZOID6_INSTALLER_SRC,
-        "build_helper": ZOID6_BUILD_HELPER,
-        "stage": ZOID6_STAGE,
-        "manifest": ZOID6_MANIFEST,
-    }
+def _load_bed_instances():
+    """Read BED_INSTANCES_FILE and return {name: raw entry}, skipping the "_comment" key."""
+    with open(BED_INSTANCES_FILE, encoding="utf-8") as fh:
+        data = json.load(fh)
+    return {name: entry for name, entry in data.items() if not name.startswith("_")}
 
 
-# Bed instances that deploy stages wheels for and installs into a venv. Each entry is a callable that
-# returns the settings, read at call time (see _instance_settings). An instance is a daemon account:
-#   account         the OS account that owns the home (its dist-wheels and venv live there)
-#   group           the group that may write those paths; the deploy user is a member
-#   account_dist    where the account receives staged wheels and the installer
-#   venv            the venv the installer writes
-#   installer       the installer staged into account_dist
-#   installer_src   the installer's source in the instance's repo
-#   build_helper    builds the instance's wheels into stage and rewrites the manifest
-#   stage           the deploy user's staging directory for built wheels
-#   manifest        the wheel list the installer reads (one wheel filename per line)
-# Add an instance by adding an entry; nothing else in deploy needs to change.
-BED_INSTANCES = {
-    "zoid6": _zoid6_settings,
-}
+def _expand_instance_path(value, source_base, stage):
+    """Expand the {source_base} and {stage} placeholders in one path."""
+    return value.replace("{source_base}", source_base).replace("{stage}", stage)
+
+
+def _instance_settings(name):
+    """The resolved settings for bed instance ``name``, read from BED_INSTANCES_FILE at call time.
+
+    Path placeholders are expanded here, not in the file, so SOURCE_BASE and the per-instance stage
+    override (``stage_env`` names the environment variable) apply on every call.
+    """
+    instances = _load_bed_instances()
+    if name not in instances:
+        raise KeyError(f"unknown bed instance {name!r}")
+    raw = instances[name]
+    missing = [f for f in _INSTANCE_FIELDS if f not in raw]
+    if missing:
+        raise ValueError(f"bed instance {name!r} in {BED_INSTANCES_FILE} is missing: {', '.join(missing)}")
+    # The stage is resolved first: the env override (stage_env) wins, else the file's "stage" value.
+    stage_env = raw.get("stage_env")
+    stage = (os.environ.get(stage_env, "") if stage_env else "") or _expand_instance_path(raw["stage"], SOURCE_BASE, "")
+    settings = {}
+    for field in _INSTANCE_FIELDS:
+        settings[field] = _expand_instance_path(raw[field], SOURCE_BASE, stage)
+    settings["stage"] = stage
+    return settings
+
+
+def _bed_instance_names():
+    return sorted(_load_bed_instances())
 
 
 def _manifest_wheels(manifest):
@@ -791,17 +795,6 @@ def _stage_file(src, dst, mode=0o644):
     shutil.copyfile(src, tmp)
     os.chmod(tmp, mode)
     os.replace(tmp, dst)
-
-
-def _instance_settings(name):
-    """The settings for bed instance ``name``, read from BED_INSTANCES at call time.
-
-    Reading at call time (not import time) lets a test or a site override a path by patching the
-    module constants that BED_INSTANCES is built from.
-    """
-    if name not in BED_INSTANCES:
-        raise KeyError(f"unknown bed instance {name!r}")
-    return BED_INSTANCES[name]()
 
 
 def run_bed_instance_wheels(name, args):
@@ -896,7 +889,7 @@ def run_make_deploy(args, project, sub=None):
     subprocess exit, timeout, or environment error. KeyboardInterrupt and
     SystemExit propagate to the caller.
     """
-    if project in BED_INSTANCES and sub in ("wheels", "venv"):
+    if project in _bed_instance_names() and sub in ("wheels", "venv"):
         s = _instance_settings(project)
         if getattr(args, "dry_run", False):
             if sub == "wheels":
