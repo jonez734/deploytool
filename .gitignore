@@ -9,3 +9,6 @@ dist/
 .ruff_cache/
 .mypy_cache/
 .venv/
+
+# build version stamp (rewritten by every build; not tracked)
+_version.py
