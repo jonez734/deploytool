@@ -107,7 +107,9 @@ VENV_LAYOUT = {
     "bed": VENV_USER,
     "mistermcfeely": VENV_USER,
     "bbsengine6": VENV_USER,
-    "murdermotel": "/var/lib/zoid6/venv",
+    # murdermotel and empyre are loaded by the zoid6 bed, so they install into its venv.
+    "murdermotel": "/home/zoid6/venv",
+    "empyre": "/home/zoid6/venv",
     "casino": VENV_USER,
     "letteredolive": "/home/zoid6/venv",
     # aolbonics installs into each BBS's active venv (or --prefix). Hosts that run the zoid6 daemon pass
@@ -271,6 +273,10 @@ TARGETS = {
     # aolbonics (jargon) is a bed client plus a zoid6 sub-router. `venv` installs it into
     # its local venv; there is no remote host target yet, so `prod` is not offered.
     "aolbonics": ["venv"],
+    # empyre and murdermotel are bed-loaded programs: venv installs them into the zoid6 bed's venv.
+    "empyre": ["venv", "deploy"],
+    # murdermotel's deploy is not wired yet; only its venv is offered here.
+    "murdermotel": ["venv"],
     "zoidoffice": ["tui", "www"],
     # identd is a separate, explicit step: it is not part of bed.prod.
     "bed": ["tui", "venv", "prod", "identd"],
@@ -292,7 +298,7 @@ TARGETS = {
     "getdate_next": ["tui", "pypi", "testpypi"],
     "mistermcfeely": ["tui", "prod"],
     # empyre deploys with its own Makefile `deploy` target (build, then `www prod`).
-    "empyre": ["deploy"],
+    # (empyre's `venv` is listed above; a later key here would replace that list.)
 }
 
 # Sub-target -> bare make target name. When a (project, sub) pair has
@@ -348,6 +354,8 @@ MAKE_TARGET_ALIASES = {
     ("letteredolive", "prod"): "prod",
     ("deploytool", "venv"): "venv",
     ("aolbonics", "venv"): "venv",
+    ("empyre", "venv"): "venv",
+    ("murdermotel", "venv"): "venv",
 }
 
 
