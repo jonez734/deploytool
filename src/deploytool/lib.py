@@ -71,6 +71,7 @@ DEPENDENCIES = {
     "backuptools": ["bbsengine6"],
     "deploytool": [],
     "atlas": [],
+    "aolbonics": ["bed", "zoid6"],
 }
 
 ALIASES = {
@@ -256,6 +257,9 @@ TARGETS = {
     # to the package indexes. All three are opt-in: none auto-expands
     # (see the drop gate in resolve()).
     "deploytool": ["venv", "prod", "pypi", "testpypi"],
+    # aolbonics (jargon) is a bed client plus a zoid6 sub-router. `venv` installs it into
+    # its local venv; there is no remote host target yet, so `prod` is not offered.
+    "aolbonics": ["venv"],
     "zoidoffice": ["tui", "www"],
     # identd is a separate, explicit step: it is not part of bed.prod.
     "bed": ["tui", "venv", "prod", "identd"],
@@ -332,6 +336,7 @@ MAKE_TARGET_ALIASES = {
     ("letteredolive", "venv"): "venv",
     ("letteredolive", "prod"): "prod",
     ("deploytool", "venv"): "venv",
+    ("aolbonics", "venv"): "venv",
 }
 
 
