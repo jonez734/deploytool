@@ -1,7 +1,8 @@
 """bed_instances.json: deploy stages and installs any registered bed instance, not only zoid6.
 
-Each test writes its own bed_instances.json under tmp_path and points lib.BED_INSTANCES_FILE at it,
-so the real loader runs. No real account, venv, or helper runs.
+Each test writes its own registry under tmp_path and makes the loader read that file in place of the
+packaged bed_instances.json. The JSON parsing and key filtering are the real code. No real account,
+venv, or helper runs.
 """
 
 import json
@@ -48,13 +49,24 @@ def _instance(tmp_path, name):
     return settings
 
 
+def _use_registry(monkeypatch, path):
+    """Make the loader read ``path`` (a temp registry) instead of the packaged file."""
+    real = lib._load_bed_instances
+
+    def from_file(source=None):
+        with open(path, encoding="utf-8") as fh:
+            return real(source=fh)
+
+    monkeypatch.setattr(lib, "_load_bed_instances", from_file)
+
+
 @pytest.fixture
 def second_instance(tmp_path, monkeypatch):
     settings = _instance(tmp_path, "othered")
     entry = {k: v for k, v in settings.items()}
     registry = tmp_path / "bed_instances.json"
     registry.write_text(json.dumps({"othered": entry}))
-    monkeypatch.setattr(lib, "BED_INSTANCES_FILE", str(registry))
+    _use_registry(monkeypatch, registry)
     # The build helper is run for real by run_bed_instance_wheels; fake it so no build happens.
     monkeypatch.setattr(lib, "_run_subprocess", lambda cmd, **k: type("R", (), {"stdout": ""})())
     return settings
@@ -113,7 +125,7 @@ def test_settings_are_read_at_call_time(tmp_path, monkeypatch):
     """The file is read on each call, so an edit to it takes effect without reloading the module."""
     registry = tmp_path / "bed_instances.json"
     registry.write_text(json.dumps({"x": {f: "/a" for f in lib._INSTANCE_FIELDS}}))
-    monkeypatch.setattr(lib, "BED_INSTANCES_FILE", str(registry))
+    _use_registry(monkeypatch, registry)
     assert lib._instance_settings("x")["venv"] == "/a"
     registry.write_text(json.dumps({"x": {f: "/b" for f in lib._INSTANCE_FIELDS}}))
     assert lib._instance_settings("x")["venv"] == "/b"
@@ -131,7 +143,7 @@ def test_shipped_registry_names_zoid6():
 def test_missing_field_is_reported_by_name(tmp_path, monkeypatch):
     registry = tmp_path / "bed_instances.json"
     registry.write_text(json.dumps({"partial": {"account": "partial"}}))
-    monkeypatch.setattr(lib, "BED_INSTANCES_FILE", str(registry))
+    _use_registry(monkeypatch, registry)
     with pytest.raises(ValueError, match="missing"):
         lib._instance_settings("partial")
 

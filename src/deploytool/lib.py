@@ -1,4 +1,5 @@
 import argparse
+import importlib.resources
 import json
 import os
 import shutil
@@ -722,19 +723,26 @@ def _run_subprocess(cmd, *, cwd=None, timeout, env=None, label):
 
 
 # Bed instances (accounts that deploy stages wheels for and installs into a venv) are defined in
-# bed_instances.json, next to this module. The file is read on each use, so it is never stale, and
-# adding an instance is a JSON edit. See that file's "_comment" for the fields.
-BED_INSTANCES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bed_instances.json")
+# bed_instances.json, shipped as package data of deploytool. The file is read on each use, so it is
+# never stale, and adding an instance is a JSON edit. See that file's "_comment" for the fields.
+BED_INSTANCES_RESOURCE = "bed_instances.json"
 _INSTANCE_FIELDS = (
     "account", "group", "account_dist", "venv", "installer", "installer_src",
     "build_helper", "stage", "manifest",
 )
 
 
-def _load_bed_instances():
-    """Read BED_INSTANCES_FILE and return {name: raw entry}, skipping the "_comment" key."""
-    with open(BED_INSTANCES_FILE, encoding="utf-8") as fh:
-        data = json.load(fh)
+def _load_bed_instances(source=None):
+    """Return {name: raw entry} from the registry, skipping the "_comment" key.
+
+    ``source`` is a text file object for the registry; by default the packaged
+    bed_instances.json is read through importlib.resources.
+    """
+    if source is None:
+        text = importlib.resources.files("deploytool").joinpath(BED_INSTANCES_RESOURCE).read_text(encoding="utf-8")
+        data = json.loads(text)
+    else:
+        data = json.load(source)
     return {name: entry for name, entry in data.items() if not name.startswith("_")}
 
 
@@ -744,7 +752,7 @@ def _expand_instance_path(value, source_base, stage):
 
 
 def _instance_settings(name):
-    """The resolved settings for bed instance ``name``, read from BED_INSTANCES_FILE at call time.
+    """The resolved settings for bed instance ``name``, read from the registry at call time.
 
     Path placeholders are expanded here, not in the file, so SOURCE_BASE and the per-instance stage
     override (``stage_env`` names the environment variable) apply on every call.
@@ -755,7 +763,7 @@ def _instance_settings(name):
     raw = instances[name]
     missing = [f for f in _INSTANCE_FIELDS if f not in raw]
     if missing:
-        raise ValueError(f"bed instance {name!r} in {BED_INSTANCES_FILE} is missing: {', '.join(missing)}")
+        raise ValueError(f"bed instance {name!r} in {BED_INSTANCES_RESOURCE} is missing: {', '.join(missing)}")
     # The stage is resolved first: the env override (stage_env) wins, else the file's "stage" value.
     stage_env = raw.get("stage_env")
     stage = (os.environ.get(stage_env, "") if stage_env else "") or _expand_instance_path(raw["stage"], SOURCE_BASE, "")
