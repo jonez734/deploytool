@@ -306,10 +306,10 @@ MAKE_TARGET_ALIASES = {
     ("zoid6", "shared"): "shared",
     # Identd mapping for the daemon login: appends managed lines to pg_hba.conf and
     # pg_ident.conf, then reloads postgresql-18. Run explicitly; not part of prod.
-    ("zoid6", "identd"): "install-pgsql",
+    ("zoid6", "identd"): "install-identd",
     ("zoid6", "wheels"): "sync-wheels",
     ("zoid6", "venv"): "install-wheels",
-    ("bed", "identd"): "install-pgsql",
+    ("bed", "identd"): "install-identd",
     # Added 2026-09-29 — bbsengine6.prod and teos.prod are the
     # user-facing names for the two umbrella deploys that don't
     # follow the `deploy-<sub>` shape. bbsengine6.prod maps to the

@@ -8,10 +8,10 @@ the database.
 These tests pin:
 
 1. `TARGETS` advertises `pgsql` for both projects.
-2. `MAKE_TARGET_ALIASES` maps each `pgsql` sub to `install-pgsql`.
-3. `run_make_deploy` would run `make -C <project> install-pgsql`.
+2. `MAKE_TARGET_ALIASES` maps each `pgsql` sub to `install-identd`.
+3. `run_make_deploy` would run `make -C <project> install-identd`.
 4. Neither `prod` chain includes `pgsql`.
-5. Both Makefiles define an `install-pgsql` rule.
+5. Both Makefiles define an `install-identd` rule (install-pgsql is an alias).
 """
 
 from pathlib import Path
@@ -32,21 +32,21 @@ def test_targets_advertise_pgsql(project):
 
 @pytest.mark.parametrize("project", ["zoid6", "bed"])
 def test_pgsql_alias_maps_to_install_pgsql(project):
-    """The user-facing `pgsql` sub reaches the `install-pgsql` make rule."""
+    """The user-facing `pgsql` sub reaches the `install-identd` make rule."""
     key = (project, "identd")
     assert key in deploytool.lib.MAKE_TARGET_ALIASES, (
         f"MAKE_TARGET_ALIASES must contain {key!r}"
     )
-    assert deploytool.lib.MAKE_TARGET_ALIASES[key] == "install-pgsql"
+    assert deploytool.lib.MAKE_TARGET_ALIASES[key] == "install-identd"
 
 
 @pytest.mark.parametrize("project", ["zoid6", "bed"])
 def test_run_make_deploy_builds_install_pgsql(project):
-    """The make target `deploy <project>.identd` invokes is `install-pgsql`."""
+    """The make target `deploy <project>.identd` invokes is `install-identd`."""
     key = (project, "identd")
     target = deploytool.lib.MAKE_TARGET_ALIASES[key]
-    assert target == "install-pgsql", (
-        f"`deploy {project}.identd` must run `make -C {project} install-pgsql`; "
+    assert target == "install-identd", (
+        f"`deploy {project}.identd` must run `make -C {project} install-identd`; "
         f"the alias gives {target!r}"
     )
 
@@ -68,7 +68,7 @@ def test_pgsql_is_not_part_of_prod(project):
 
 @pytest.mark.parametrize("project", ["zoid6", "bed"])
 def test_makefile_defines_install_pgsql(project):
-    """Each project's Makefile must define an `install-pgsql` rule."""
+    """Each project's Makefile must define an `install-identd` rule."""
     makefile = Path(deploytool.lib.SOURCE_BASE) / project / "Makefile"
     if project == "zoid6":
         makefile = Path(deploytool.lib.SOURCE_BASE) / "zoid6" / "src" / "Makefile"
@@ -76,4 +76,5 @@ def test_makefile_defines_install_pgsql(project):
         makefile = Path(deploytool.lib.SOURCE_BASE) / "bed" / "src" / "Makefile"
     assert makefile.is_file(), f"{makefile} not found"
     text = makefile.read_text(encoding="utf-8")
-    assert "\ninstall-pgsql:" in text, f"{makefile} has no install-pgsql rule"
+    assert "\ninstall-identd:" in text, f"{makefile} has no install-identd rule"
+    assert "\ninstall-pgsql:" in text, f"{makefile} has no install-pgsql alias"
