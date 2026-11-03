@@ -10,3 +10,12 @@ Deferred until the sudo rule is in place: run the install as `zoid6` through a s
 
 - [ ] No checkout version step in deploytool. Its `venv` targets for other projects call those projects' Makefiles, so they inherit each project's item above. Keep the scratch-only rule in deploytool's TODO for any new target.
 - [ ] Deferred: the sudo wrapper that lets `jam` run zoid6 deploys as `zoid6` (not written; waiting for the sudo rule).
+
+## Status (current)
+
+- zoid6 venv and dist-wheels are zoid6-owned; `scripts/zoid6-perms.sh --check` passes.
+- `bin/` is locked (`0755`, owned by zoid6); the sudo rule `/etc/sudoers.d/zoid6-venv-bin` lets jam run
+  `/home/zoid6/venv/bin/*` as zoid6 with a password prompt.
+- `sync-wheels`, the installer (`$VENV/bin/pip`), and the build helper's `safe.directory` all run as zoid6.
+- Remaining: jam still runs `deploy` and the bed/zoid6 launchers directly from its shell. The one-writer
+  goal is that installs go through `sudo -u zoid6` only. This is a workflow change on jam's side.
