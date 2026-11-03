@@ -75,9 +75,11 @@ def test_bbsengine6_targets_includes_engine_stage_and_engine_prod():
     )
     assert targets.count("engine-stage") == 1
     assert targets.count("engine-prod") == 1
-    assert targets[-2:] == ["engine-stage", "engine-prod"], (
-        f"engine subs must be the trailing pair in TARGETS, in stage-then-prod order; "
-        f"got tail {targets[-2:]!r} from {targets!r}"
+    # The engine pair stays in stage-then-prod order, directly after the core subs. Later install
+    # targets (auth helper, PAM, everything) are appended after it.
+    i = targets.index("engine-stage")
+    assert targets[i:i + 2] == ["engine-stage", "engine-prod"], (
+        f"engine-stage must be immediately followed by engine-prod; got {targets!r}"
     )
 
 
@@ -358,7 +360,9 @@ def test_engine_vhostconfig_php_exists_with_resolver():
         f"{vhostconfig} must include a SCRIPT_FILENAME-based fallback "
         f"for deployments where Apache SetEnv doesn't reach FPM. Got:\n{text}"
     )
-    assert "getenv('VHOSTCONFIG')" in text or 'getenv("VHOSTCONFIG")' in text, (
+    # The env read goes through the canonical helper, util\env() (which walks REDIRECT_<key> too),
+    # not a raw getenv(). See AGENTS.md "TEOSDIR resolution contract".
+    assert "util\\env('VHOSTCONFIG'" in text or 'util\\env("VHOSTCONFIG"' in text, (
         f"{vhostconfig} must read VHOSTCONFIG env var as the primary "
         f"resolution path. Got:\n{text}"
     )
