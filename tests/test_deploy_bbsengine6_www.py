@@ -99,13 +99,18 @@ def test_bbsengine6_targets_has_eight_subs():
     `MAKE_TARGET_ALIASES[("bbsengine6", "prod")] = "deploy"`.
     """
     targets = deploytool.lib.get_targets("bbsengine6")
-    assert targets == ["tui", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod", "engine-stage", "engine-prod"], (
-        f"bbsengine6 TARGETS must be ['tui', 'wwworg', 'wwwcom', 'prod', 'handbook', 'handbook-prod', 'engine-stage', 'engine-prod']; "
-        f"got {targets!r}. Bare `deploy bbsengine6` must stay ambiguous "
-        "(warn + exit 1) so the operator names a sub explicitly, and all "
-        "eight sub-targets (the two website deploys, the engine-library "
-        "umbrella, the handbook stage, the merlin-push handbook-prod "
-        "umbrella, and the engine stage/prod pair) must remain reachable."
+    # The eight core subs, plus venv (df6e928) and the three auth/PAM install targets (b278ec1).
+    # Every one must stay reachable by name, and the list must not drift silently.
+    assert targets == [
+        "tui", "venv", "wwworg", "wwwcom", "prod", "handbook", "handbook-prod",
+        "engine-stage", "engine-prod",
+        "install-bbsengine6-auth-helper", "install-pam-bbsengine6-on-merlin",
+        "install-bbsengine6-everything",
+    ], (
+        f"bbsengine6 TARGETS drifted; got {targets!r}. Bare `deploy bbsengine6` must stay ambiguous "
+        "(warn + exit 1) so the operator names a sub explicitly, and the eight core sub-targets "
+        "(the two website deploys, the engine-library umbrella, the handbook stage, the merlin-push "
+        "handbook-prod umbrella, and the engine stage/prod pair) must remain reachable."
     )
 
 
