@@ -888,6 +888,16 @@ def run_bed_instance_venv(name, args):
         io.echo(f"Give the {s['group']} group write access, once, as {s['account']} or root:")
         io.echo(f"  sudo chmod -R g+rwX {venv}")
         raise DeployFailed(rc=2, label=label)
+    # pip replaces the console-script launchers in bin/. When the account owns bin/ and the group
+    # cannot write it, the install would fail partway through pip, so stop here and print the command
+    # the account runs instead. Built from the registry fields; nothing here names a specific account.
+    bindir = os.path.join(venv, "bin")
+    if os.path.isdir(bindir) and not _writable_by_me(bindir):
+        deploy_cmd = os.path.join(bindir, "deploy")
+        io.echo(f"{{red}}{label}: {bindir} is not writable by group {s['group']}.{{/all}}")
+        io.echo("Run the install as the account:")
+        io.echo(f"  sudo -u {s['account']} {deploy_cmd} {name}.venv --prefix={venv}")
+        raise DeployFailed(rc=2, label=label)
     cmd = ["sh", s["installer"]]
     env = os.environ.copy()
     env["DIST"] = s["account_dist"]

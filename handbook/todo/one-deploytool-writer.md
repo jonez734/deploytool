@@ -17,5 +17,8 @@ Deferred until the sudo rule is in place: run the install as `zoid6` through a s
 - `bin/` is locked (`0755`, owned by zoid6); the sudo rule `/etc/sudoers.d/zoid6-venv-bin` lets jam run
   `/home/zoid6/venv/bin/*` as zoid6 with a password prompt.
 - `sync-wheels`, the installer (`$VENV/bin/pip`), and the build helper's `safe.directory` all run as zoid6.
-- Decided (option B): jam keeps running `deploy` and the launchers directly from its shell. The venv is
-  zoid6-owned and `bin/` is locked, so the install stays protected without a workflow change. Closed.
+- Open (reverses "option B"): jam must keep using `deploy`. `bin/` is locked (`zoid6:zoid6 2755`, ACL
+  effective `r-x` for group zoid6), so a jam-run `deploy zoid6.venv` fails when pip writes launchers.
+  Options still to choose between: (1) deploytool runs the zoid6 install step through
+  `sudo -u zoid6` (needs a deploytool change and a test); (2) restore group write on `bin/` (weakens the lock).
+  Not closed until one is chosen and verified from jam's shell.

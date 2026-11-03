@@ -108,6 +108,66 @@ def test_zoid6_venv_stops_when_venv_not_group_writable(monkeypatch, tmp_path, in
     assert "chmod -R g+rwX" in "\n".join(out)
 
 
+def _bin_not_writable(monkeypatch, bindir):
+    """Make only the venv's bin/ unwritable; the venv itself reports writable."""
+    real = lib._writable_by_me
+    monkeypatch.setattr(lib, "_writable_by_me", lambda path: real(path) and path != str(bindir))
+
+
+def test_zoid6_venv_stops_before_installer_when_bin_not_writable(monkeypatch, tmp_path, instance_settings):
+    out = _echoes(monkeypatch)
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    installer = tmp_path / "INSTALL.sh"
+    installer.write_text("#!/bin/sh\n")
+    instance_settings("zoid6", installer=str(installer), venv=str(venv))
+    _bin_not_writable(monkeypatch, venv / "bin")
+    ran = []
+    monkeypatch.setattr(lib, "_run_subprocess", lambda cmd, **k: ran.append(cmd))
+    with pytest.raises(lib.DeployFailed) as ei:
+        lib.run_zoid6_venv(type("A", (), {"timeout": 5})())
+    assert ei.value.label == "zoid6.venv"
+    assert ran == []
+
+
+def test_bin_hint_is_built_from_the_registry(monkeypatch, tmp_path, instance_settings):
+    out = _echoes(monkeypatch)
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    installer = tmp_path / "INSTALL.sh"
+    installer.write_text("#!/bin/sh\n")
+    instance_settings("zoid6", installer=str(installer), venv=str(venv), account="zoid6")
+    _bin_not_writable(monkeypatch, venv / "bin")
+    with pytest.raises(lib.DeployFailed):
+        lib.run_zoid6_venv(type("A", (), {"timeout": 5})())
+    text = "\n".join(out)
+    assert f"sudo -u zoid6 {venv}/bin/deploy zoid6.venv --prefix={venv}" in text
+
+
+def test_bin_hint_uses_the_second_instances_account_and_paths(tmp_path, monkeypatch):
+    out = _echoes(monkeypatch)
+    venv = tmp_path / "other-venv"
+    (venv / "bin").mkdir(parents=True)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    installer = dist / "INSTALL.sh"
+    installer.write_text("#!/bin/sh\n")
+    manifest = tmp_path / "other-wheels.txt"
+    manifest.write_text("")
+    settings = {
+        "account": "othered", "group": "othered", "account_dist": str(dist), "venv": str(venv),
+        "installer": str(installer), "installer_src": str(installer), "build_helper": str(installer),
+        "stage": str(tmp_path), "manifest": str(manifest),
+    }
+    monkeypatch.setattr(lib, "_instance_settings", lambda n: dict(settings) if n == "othered" else None)
+    _bin_not_writable(monkeypatch, venv / "bin")
+    with pytest.raises(lib.DeployFailed):
+        lib.run_bed_instance_venv("othered", type("A", (), {"timeout": 5})())
+    text = "\n".join(out)
+    assert f"sudo -u othered {venv}/bin/deploy othered.venv --prefix={venv}" in text
+    assert "zoid6" not in text
+
+
 def test_zoid6_venv_runs_the_installer_as_jam_with_dist_and_venv(monkeypatch, tmp_path, instance_settings):
     _echoes(monkeypatch)
     venv = tmp_path / "venv"
