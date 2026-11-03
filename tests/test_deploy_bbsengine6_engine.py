@@ -264,9 +264,10 @@ def test_bbsengine6_makefile_lists_engine_targets_as_phony():
     file in the working tree."""
     makefile = Path(deploytool.lib.SOURCE_BASE) / "bbsengine6" / "Makefile"
     text = makefile.read_text()
-    phony_match = re.search(r"^\.PHONY:\s*(.+)$", text, re.MULTILINE)
-    assert phony_match, "bbsengine6/Makefile must have a .PHONY: declaration"
-    phony_line = phony_match.group(1)
+    # The Makefile declares .PHONY on several lines; the targets may sit on any of them.
+    phony_lines = re.findall(r"^\.PHONY:\s*(.+)$", text, re.MULTILINE)
+    assert phony_lines, "bbsengine6/Makefile must have a .PHONY: declaration"
+    phony_line = " ".join(phony_lines)
     assert "deploy-engine-stage" in phony_line, (
         f"deploy-engine-stage must be in .PHONY; got: {phony_line!r}"
     )
