@@ -1,33 +1,33 @@
 # deploytool
 
 A Python CLI that orchestrates `make` invocations across the
-zoidtechnologies.com project tree. Resolves a `deploy <project>`
-request into a topologically-sorted chain of `make deploy-<sub>`
-calls and walks them, reporting failures.
+zoidtechnologies.com project tree. It resolves a `deploy <project>`
+request into a topologically sorted chain of `make deploy-<sub>` calls
+and runs them in order, stopping at the first failure. Bed-instance
+installs (`<name>.wheels`, `<name>.venv`) run through deploytool's own
+code, not make.
 
 - **Repo:** https://github.com/jonez734/deploytool
 - **Spec:** [SPECS.md](SPECS.md)
-- **Status:** [TODO.md](TODO.md) — Phase 1 (`--editable` flag,
-  `DEPLOY_EDITABLE` env var, per-project wheel/editable swap) is
-  complete. Phase 2 (zoidoffice, getdate_next, backuptools) is
-  open work.
+- **Status:** [TODO.md](TODO.md)
+- **History:** [CHANGELOG.md](CHANGELOG.md)
 
 ## Install
 
-`deploytool` is consumed as a wheel from PyPI-style local installs
-(via `pip install` into an active venv) or as an editable install
-from the source tree. The build target also honors
-`DEPLOY_EDITABLE=1`:
+`deploytool` installs as a wheel into the active venv, or editable from
+the source tree:
 
 ```sh
-# from the source tree
-make install                 # builds the wheel into ./dist and pip-installs it
+make install                    # build the wheel into ./dist and pip-install it
 make install DEPLOY_EDITABLE=1  # editable install from the source tree
-# or, for dev (equivalent to DEPLOY_EDITABLE=1):
-pip install -e .
+pip install -e .                # equivalent to DEPLOY_EDITABLE=1
 ```
 
-Runtime dep: `bbsengine6` (resolved by `pip` automatically).
+Requires Python `>=3.9,<3.14` (`src/pyproject.toml`). The cap at 3.14 is
+deliberate: asimov depends on `mediapipe`, which does not support newer
+Python. Do not raise it without checking that dependency.
+
+Runtime dependency: `bbsengine6`, resolved by `pip`.
 
 ## Usage
 
@@ -37,120 +37,116 @@ deploy [options] project[.sub] [project[.sub] ...]
 
 | Flag | Effect |
 |---|---|
-| `--host HOST` | Target host (default: `merlin`) |
-| `--dry-run` | Pass `--dry-run` through to each `make` invocation; per-project Makefile dry-run output (e.g. inner `pip install ...` recipe lines) is captured and printed. Exports `DEPLOY_DRY_RUN=1` in the subprocess env. The verify step is skipped under `--dry-run`. |
-| `--timeout SECONDS` | Per-step subprocess timeout (default: `600`); expired timeouts abort the deploy |
-| `--verify` | Run post-deploy verification step |
-| `--debug` | Debug mode |
-| `--editable` | Install per-project Python packages in editable mode (`pip install -e`); sets `DEPLOY_EDITABLE=1` in the `make` env |
-| `--with-deps` | Include transitive dependencies in the chain. Without it, only explicitly named projects are built (default: `false`). Bare bases (no `.sub`) under `--with-deps` also auto-expand to all subs. Bare bases without `--with-deps` list the available subs and exit `1`. |
-| `--upgrade` / `--no-upgrade` | Pass `--upgrade` to every `pip install` in the deploy chain (default: enabled). Sets `DEPLOY_UPGRADE=1` in the `make` env when enabled; per-project Makefiles splice `--upgrade` into their `pip install` lines accordingly. Pass `--no-upgrade` for a hermetic deploy against the wheels in `$(OUTDIR)` only. |
+| `--host HOST` | Target host (default: `merlin`). |
+| `--dry-run` | Pass `--dry-run` to each `make` (sets `DEPLOY_DRY_RUN=1`) and print what would run. Bed-instance steps print the command and do not run it. The venv bin guard and the verify step do not run. |
+| `--timeout SECONDS` | Per-step timeout (default: `600`). An expired timeout aborts the deploy. |
+| `--verify` | Run the post-deploy verify step. Only `bbsengine6` has one (`php test_blurb_render.php`); other projects ignore the flag. Skipped under `--dry-run`. |
+| `--debug` | Debug output. |
+| `--editable` | Install Python packages in editable mode. Sets `DEPLOY_EDITABLE=1`. |
+| `--with-deps` | Include transitive dependencies. Without it, only the named projects run. |
+| `--prefix PATH` | Venv install prefix for `<project>.venv` and `<project>.prod`. Passed to make as `DEPLOY_PREFIX`. Without it, the project's registered venv (`VENV_LAYOUT`) is used. A stale `DEPLOY_PREFIX` in your shell is removed. |
+| `--upgrade` / `--no-upgrade` | Add `--upgrade` to every `pip install` in the chain (default: on). `--no-upgrade` installs only from the wheels in `$(OUTDIR)`. |
 
 ### Examples
 
 ```sh
-# build only what was named: casino.venv (no bbsengine6, no bed pulled in)
+# build only what was named (no bbsengine6, no bed pulled in)
 deploy casino.venv
 
-# both subs for casino, no transitive deps
+# several subs at once, no transitive deps
 deploy casino.venv casino.www
 
-# bare base is AMBIGUOUS without --with-deps: errors out listing subs
+# a bare base with several subs is ambiguous: names the subs and exits 1
 deploy casino
-# -> exit 1 with: casino has multiple sub-targets (venv, www); choose ...
+deploy --with-deps casino          # still ambiguous; name the subs
 
-# bare base with --with-deps is still ambiguous: name the subs explicitly
-deploy --with-deps casino
-# -> exit 1 with: casino has multiple sub-targets (venv, www); choose ...
+# explicit sub with deps: the chain for that sub
+deploy --with-deps casino.venv     # -> bbsengine6 (bare), casino.venv
 
-# explicit sub under --with-deps: chain for that sub
-deploy --with-deps casino.venv
-# -> bbsengine6 (bare), casino.venv
-
-# dry-run: see the chain without executing. Each step runs `make -n`
-# against the real per-project Makefile, so the output includes the
-# inner recipe (e.g. `pip install /srv/repo/casino/casino-*.whl`,
-# `cd py && pip install -e .` under --editable, recursive `make -C
-# zoid6/src deploy-tui`, etc.). The verify step is skipped since
-# `php` has no dry-run flag.
+# preview: runs make -n for each step; skips the venv bin guard and verify
 deploy --dry-run casino.venv
 
-# deploy + verify (runs bbsengine6's blurb render test after)
+# deploy and verify (bbsengine6 is the only project with a verify step)
 deploy --verify bbsengine6.www
 
-# editable install across the chain: edits in any source tree are
-# picked up on next interpreter start without a rebuild
+# editable install across the chain
 deploy --editable --with-deps casino.venv
 
-# single-sub project has no ambiguity: `deploy getdate_next` -> tui
-deploy getdate_next
+# single-sub project: no ambiguity
+deploy getdate_next                # -> getdate_next.tui
 
-# bare project (no TARGETS) runs unconditionally
+# project with no TARGETS: the bare make `deploy` target runs
 deploy mistermcfeely
 
-# bbsengine6 website deploys (bbsengine.org / bbsengine.com)
+# bbsengine6 website and engine deploys
 deploy bbsengine6.wwworg
 deploy bbsengine6.wwwcom
+deploy bbsengine6.prod             # the engine-library umbrella
+deploy bbsengine6.engine-stage     # local rsync only
+deploy bbsengine6.engine-prod      # merlin push of the staged engine
 
-# bbsengine6 engine-library umbrella (php + engine + skin + smarty stage+prod push)
-deploy bbsengine6.prod          # -> make -C bbsengine6 deploy (the umbrella rule)
-deploy bbsengine6.p             # same as bbsengine6.prod (unique short prefix)
-
-# bbsengine6 engine entry-point deploys (zoidtechnologies.com vhost):
-# stage/prod split. Engine-stage is local rsync only;
-# engine-prod runs the engine-deploy-prod umbrella (stage + merlin push).
-deploy bbsengine6.engine-stage    # local: -> /srv/www/vhosts/zoidtechnologies.com/html/engine/
-deploy bbsengine6.engine-prod     # merlin push of staged engine
-deploy bbsengine6.engine-s        # same as engine-stage (unique prefix)
-deploy bbsengine6.engine-p        # same as engine-prod (unique prefix)
-
-# sub prefix matching: the shortest unique prefix within a project's
-# own TARGETS list is accepted. These three are equivalent:
+# sub prefixes: the shortest unique prefix within TARGETS is accepted
 deploy bbsengine6.handbook
 deploy bbsengine6.hand
 deploy bbsengine6.h
+deploy zoid6.p                     # -> zoid6.prod
+deploy bed.p                       # -> bed.prod
 
-# `p` -> prod in any project where prod is unique in TARGETS:
-deploy zoid6.p         # same as: deploy zoid6.prod
-deploy bed.p           # same as: deploy bed.prod
-deploy mistermcfeely.p # same as: deploy mistermcfeely.prod
-
-# ambiguous prefixes error with a distinct "ambiguous sub-target
-# prefix" message naming the candidates:
-deploy bbsengine6.www  # ERROR: matches both wwworg and wwwcom
+# an ambiguous prefix errors and names the candidates
+deploy bbsengine6.www              # matches both wwworg and wwwcom
 ```
+
+### Bed-instance deploys
+
+Bed instances are registered in `src/deploytool/bed_instances.json`. Each
+entry names the account that owns the install, the group that may write
+it, the venv, the installer, and the staged wheel list. Deploytool reads
+the registry, and nothing in the code names a specific account.
+
+Two sub-targets run through deploytool itself:
+
+- **`<name>.wheels`** builds the instance's wheels into the staging
+  directory and copies them to the account's `dist-wheels`. It needs
+  write access to the account's dist directory.
+- **`<name>.venv`** runs the account's installer against the staged
+  wheels and the venv. Before pip runs, it checks that the venv and its
+  `bin/` are writable by the deploy user. If not, it stops with rc `2`
+  and prints the command the owning account should run, for example:
+
+  ```
+  sudo -u zoid6 /home/zoid6/venv/bin/deploy zoid6.venv --prefix=/home/zoid6/venv
+  ```
+
+  Deploytool never runs sudo itself. The owning account runs the printed
+  command.
+
+Other projects' `venv` and `prod` subs also check `<prefix>/bin` before
+make runs (`_check_venv_bin_writable`). pip replaces console-script
+launchers in `bin/`. When another account owns that directory, pip can
+uninstall a launcher and then fail to restore it, which leaves the venv
+partly changed. The check stops the deploy before that can happen. Dry
+runs are not checked.
 
 ### Sub-target semantics
 
-For each project, `TARGETS[proj]` lists the sub-targets that project
-exposes (e.g. `casino -> ["venv", "www"]`). The caller may invoke a
-project three ways:
+`TARGETS[proj]` lists the subs a project exposes. A project can be
+invoked in four ways:
 
-- **`deploy proj.tui`** — pin one or more explicit subs; only those
-  subs run. No transitive deps are pulled in (add `--with-deps` to
-  pull them).
-- **`deploy proj`** (bare, no `--with-deps`) — ambiguous if
-  `len(TARGETS[proj]) > 1`. The resolver lists the available subs
-  and exits `1`. Caller must name a sub (or pass `--with-deps`).
-- **`deploy --with-deps proj`** (bare, `--with-deps` set) — auto-
-  expands to every entry in `TARGETS[proj]` AND walks the full
-  transitive dep chain. This is the one-shot "build everything
-  for this project" shortcut.
-- **Single-entry `TARGETS[proj]`** (e.g. `getdate_next -> ["tui"]`)
-  has no ambiguity to begin with; `deploy getdate_next` (bare) runs
-  `getdate_next.tui` automatically.
-- **No `TARGETS[proj]`** (e.g. `mistermcfeely`, `asimov`,
-  `letteredolive`) — no subs to choose; the bare `make deploy`
-  target runs.
+- **`deploy proj.sub`** runs the named subs. Dependencies are not pulled
+  in unless `--with-deps` is set.
+- **`deploy proj`** (bare) is ambiguous when `TARGETS[proj]` has more than
+  one entry. It lists the subs and exits `1`.
+- **`deploy --with-deps proj`** (bare) expands to every entry in
+  `TARGETS[proj]` and walks the full dependency chain.
+- **No `TARGETS[proj]`** (for example `mistermcfeely`): the bare make
+  `deploy` target runs.
 
-`--with-deps` controls whether the transitive dep chain (`bbsengine6`,
-`bed`, etc.) is walked:
+Single-entry `TARGETS` (for example `getdate_next -> ["tui"]`) run that
+one sub when called bare.
 
-- **Default (`--with-deps` not set)** — no deps pulled. Only the
-  caller-named projects run.
-- **`--with-deps` set** — full topo-sorted dep chain for every
-  requested sub. Combined with `--editable`, installs each package
-  editable into the active venv.
+`--with-deps` controls the dependency chain. Without it, only the named
+projects run. With it, every requested sub's dependencies run first, in
+topological order.
 
 ## Build & publish
 
@@ -158,84 +154,71 @@ project three ways:
 make version           # stamps src/deploytool/_version.py
 make build             # sdist + wheel into ./dist/
 make install           # build + pip install into the active venv
-make test              # run pytest tests/
-make clean             # wipe build/ dist/ *.egg-info/ __pycache__/
+make test              # pytest tests/
+make clean             # remove build/, dist/, egg-info, __pycache__
 ```
 
-Output lands in `./dist/` per-project. (deploytool's local
-`OUTDIR` is `dist/`, **not** `/srv/repo/deploytool/` —
-deploytool is a standalone repo and publishes to PyPI from
-`dist/`. The other projects Phase-0'd to `/srv/repo/<project>/`
-because they share an OUTDIR with their sibling repos on the
-host.)
+Output goes to `./dist/`. Deploytool is a standalone repo, so its `OUTDIR`
+is `dist/`, not `/srv/repo/deploytool/`.
 
 ## Tests
 
 ```sh
 make test
-# or directly:
-pytest tests/
+# or
+PYTHONPATH=src pytest tests/
 ```
 
-Tests are regression guards for failure modes that bit production
-deploys:
+`PYTHONPATH=src` makes the tests import the checked-out code, not an
+installed copy. Some tests call `make` against the sibling project
+Makefiles under `SOURCE_BASE` (`DEPLOYTOOL_SOURCE_BASE`, default
+`/home/opencode/data/work`). On a checkout without those trees, those tests
+are skipped.
 
-- `test_deploy_bed_tui.py` — egg-info absolute-path trap;
-  bed.tui → `deploy-venv` resolution; bbsengine6.tui conditional dep.
-- `test_deploy_getdate_next_tui.py` — `PREPARE_BUILD` invariants
-  (foreign-owned `build/` chmod EPERM; `chmod 1775` not `chmod g-s`).
-- `test_deploy_bbsengine6_www.py` — five- (now seven-, now eight-) sub
-  TARGETS shape for `bbsengine6` (`tui`, `wwworg`, `wwwcom`, `prod`,
-  `handbook`, `handbook-prod`, `engine-stage`, `engine-prod`); legacy
-  `www` removed; bare-base ambiguity; explicit-sub resolution;
-  make-rule wiring for `deploy-wwworg` / `deploy-wwwcom` and their
-  `wwworg:` / `wwwcom:` delegates in `bbsengine6/Makefile`. The engine
-  subs get their own dedicated regression file
-  (`test_deploy_bbsengine6_engine.py`) covering stage/prod split,
-  prefix matching, and the underlying `bbsengine6/engine/Makefile`
-  shape. The new engine-library umbrella sub `prod` gets its own
-  dedicated regression file (`test_deploy_bbsengine6_prod.py`)
-  covering the umbrella alias, cross-project consumers (zoid6.www,
-  casino.www, article2.www, teos.www, teos.prod), bare-base dedup,
-  and the `deploy:` Makefile rule guard.
-- `test_deploy_with_deps.py` — `--with-deps` flag and bare-base
-  ambiguity rules (multi-sub TARGETS lists subs and exits 1;
-  single-sub TARGETS auto-picks; bare under `--with-deps` auto-
-  expands subs and walks dep chains); also pins the teos.www and
-  teos.prod `--with-deps` chain shapes (the explicit
-  `bbsengine6.prod` edge replaces the previous implicit bare-base
-  transitive behavior).
-- `test_deploy_aborts_on_step_failure.py` — `run_make_deploy` /
-  `run_verify` exception contract (`DeployFailed`), env handling
-  (`--editable` set/strip), subprocess hardening, abort propagation
-  in `main.main()`.
+The tests are regression guards for failures that broke real deploys.
+Notable files:
 
-Tests invoke `make` against real sibling-project Makefiles under
-`SOURCE_BASE` (`/home/opencode/data/work`). CI or a fresh checkout
-without the sibling trees will skip them.
+- `test_deploy_bed_instances.py`, `test_deploy_zoid6_venv.py`,
+  `test_deploy_zoid6_root.py`, `test_deploy_zoid6_shared.py`: bed-instance
+  wheel and venv steps, the zoid6 path, and the installer contract.
+- `test_deploy_venv_bin_guard.py`: the `bin/` writability guard, including
+  that dry runs are not checked and non-venv subs are not stopped.
+- `test_deploy_prefix_flag.py`: `--prefix` and `DEPLOY_PREFIX` routing.
+  These tests skip the live `bin/` check, which has its own tests.
+- `test_deploy_bed_tui.py`: the `PREPARE_BUILD` build-dir mode and the
+  `bed.tui` to `deploy-venv` mapping.
+- `test_deploy_bbsengine6_www.py`, `test_deploy_bbsengine6_engine.py`,
+  `test_deploy_bbsengine6_prod.py`, `test_deploy_bbsengine6_venv.py`:
+  the `bbsengine6` sub list, the engine stage/prod split, the umbrella
+  `prod`, and the `venv` target.
+- `test_deploy_with_deps.py`: the `--with-deps` chain and bare-base
+  ambiguity rules.
+- `test_deploy_aborts_on_step_failure.py`: the `DeployFailed` contract, env
+  handling, and abort propagation.
+- `test_venv_layout_projects.py`: the `VENV_LAYOUT` registry.
 
 ## Architecture
 
-The dependency graph, target registry, sub-target aliases, venv
-registry, and project directory overrides live as plain Python dicts
-in `src/deploytool/lib.py`:
+The registries are plain Python dicts in `src/deploytool/lib.py`:
 
-- `DEPENDENCIES`, `CONDITIONAL_DEPENDENCIES` — the topo graph
-- `TARGETS` — sub-targets each project exposes
-- `MAKE_TARGET_ALIASES` — sub name → make target name (e.g.,
-  `bed.tui` → `deploy-venv`)
-- `ALIASES`, `ALIAS_PATTERNS` — user-facing → canonical name map
-- `VENV_LAYOUT`, `VENV_USER` — per-project venv paths. For the `venv` and
-  `prod` subs, a non-`None` entry sets `DEPLOY_PREFIX` when `--prefix` is not
-  given, so the install goes to the registered venv, not the operator's
-  `~/.venv`. `--prefix` still overrides it. `None` (`VENV_USER`) leaves the
-  Makefile default in place.
-- `PROJECT_DIRS` — projects whose source tree lives outside
-  `SOURCE_BASE/<name>`
+- `DEPENDENCIES`, `CONDITIONAL_DEPENDENCIES`: the dependency graph.
+- `BARE_DEPS_SKIPPED_FOR`: `(project, sub)` pairs that do not pull a bare
+  dependency. Currently `bed.venv`, `zoid6.venv`, `letteredolive.venv`,
+  `aolbonics.venv`.
+- `TARGETS`: the subs each project exposes.
+- `MAKE_TARGET_ALIASES`: sub name to make target (for example `bed.tui`
+  maps to `deploy-venv`).
+- `ALIASES`, `ALIAS_PATTERNS`: user-facing names to canonical names.
+- `VENV_LAYOUT`, `VENV_USER`: each project's registered venv. For the
+  `venv` and `prod` subs, a non-`None` entry sets `DEPLOY_PREFIX` when
+  `--prefix` is not given. `None` (`VENV_USER`) leaves the Makefile's
+  default.
+- `PROJECT_DIRS`: projects whose source tree is outside `SOURCE_BASE/<name>`.
+- `BED_INSTANCES`: loaded from `src/deploytool/bed_instances.json`. Drives
+  the `<name>.wheels` and `<name>.venv` steps.
 
-See [SPECS.md](SPECS.md) for the design rules these registries
-encode, with cross-references to specific line ranges in `lib.py`.
+See [SPECS.md](SPECS.md) for the design rules and their reasons.
 
 ## License
 
-GPL-2.0-or-later. See `pyproject.toml` for the SPDX identifier.
+GPL-2.0-or-later. See `src/pyproject.toml` for the SPDX identifier.
