@@ -1,4 +1,5 @@
 import argparse
+import getpass
 import importlib.resources
 import json
 import os
@@ -809,6 +810,31 @@ def _group_fix_hint(path, group):
     return f"  chmod g+rwx {path}   (as the account owner or root; the deploy user must be in group {group})"
 
 
+def _check_venv_bin_writable(label, prefix):
+    """Stop a venv install whose target bin/ the deploy user cannot write, before pip runs.
+
+    pip replaces console-script launchers in <prefix>/bin. When that directory belongs to another
+    account and the deploy user has no write access, pip uninstalls a launcher and then fails to
+    restore it, partway through the install. Stop first, and print the command the owning account
+    runs instead. The owner is read from the directory, so nothing here names an account.
+    """
+    if not prefix:
+        return
+    bindir = os.path.join(prefix, "bin")
+    if not os.path.isdir(bindir) or _writable_by_me(bindir):
+        return
+    try:
+        import pwd
+
+        owner = pwd.getpwuid(os.stat(bindir).st_uid).pw_name
+    except (KeyError, OSError):
+        owner = "the owning account"
+    io.echo(f"{{red}}{label}: {bindir} is not writable by {getpass.getuser()}.{{/all}}")
+    io.echo("Run the install as the owning account:")
+    io.echo(f"  sudo -u {owner} {os.path.join(bindir, 'deploy')} {label.split('.')[0]}.venv --prefix={prefix}")
+    raise DeployFailed(rc=2, label=label)
+
+
 def _stage_file(src, dst, mode=0o644):
     """Copy src to dst by writing a temp file in dst's directory and renaming it over dst.
 
@@ -955,6 +981,12 @@ def run_make_deploy(args, project, sub=None):
     # A sub that installs into an account's own home runs as that account (no root needed for the
     # account's files). The account is the one that owns the target directory.
     label = f"{project}.{sub}" if sub else project
+
+    # A venv install writes launchers into <prefix>/bin. Check that before make runs, so a deploy
+    # the user cannot complete stops early with the owning account's command (dry runs only print).
+    if sub in ("venv", "prod") and not getattr(args, "dry_run", False):
+        prefix = getattr(args, "prefix", None) or VENV_LAYOUT.get(ALIASES.get(project, project))
+        _check_venv_bin_writable(label, prefix)
 
     # Always copy the operator's env so PATH and friends are preserved,
     # then control the editable-mode + with-deps + dry-run vars

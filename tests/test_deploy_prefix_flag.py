@@ -51,6 +51,9 @@ def _run_with(monkeypatch, argv, project, sub, env_prefix=None):
     else:
         monkeypatch.delenv("DEPLOY_PREFIX", raising=False)
     monkeypatch.setattr(deploytool.lib.subprocess, "run", fake_run)
+    # These tests check how the env is routed, not the bin/ permission guard; that guard has its own
+    # tests (test_deploy_venv_bin_guard.py). Skip it so the layout path is not checked on this host.
+    monkeypatch.setattr(deploytool.lib, "_check_venv_bin_writable", lambda label, prefix: None)
     args = lib.buildargs().parse_args(argv)
     assert deploytool.lib.run_make_deploy(args, project, sub) == 0
     return captured
