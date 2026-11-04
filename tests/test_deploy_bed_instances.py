@@ -86,16 +86,18 @@ def test_second_instance_venv_runs_its_installer_with_its_paths(second_instance,
 
     def fake(cmd, **kw):
         seen["cmd"] = cmd
-        seen["env"] = kw["env"]
         return type("R", (), {"stdout": ""})()
 
     monkeypatch.setattr(lib, "_run_subprocess", fake)
     monkeypatch.setattr(lib, "_writable_by_me", lambda path: True)
+    monkeypatch.setattr(lib, "_manifest_wheels", lambda path: ["bed-1-py3-none-any.whl"])
     _echoes(monkeypatch)
     lib.run_bed_instance_venv("othered", type("A", (), {"timeout": 5})())
-    assert seen["cmd"] == ["sh", second_instance["installer"]]
-    assert seen["env"]["DIST"] == second_instance["account_dist"]
-    assert seen["env"]["VENV"] == second_instance["venv"]
+    # The shared installer runs pip directly, against this instance's dist and venv, never the script.
+    assert seen["cmd"][:4] == [f"{second_instance['venv']}/bin/python", "-m", "pip", "install"]
+    assert seen["cmd"][-1] == f"{second_instance['account_dist']}/bed-1-py3-none-any.whl"
+    assert "--no-deps" not in seen["cmd"]
+    assert second_instance["installer"] not in seen["cmd"]
 
 
 def test_dispatch_routes_a_registered_instance(second_instance, monkeypatch):

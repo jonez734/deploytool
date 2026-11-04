@@ -175,16 +175,18 @@ def test_zoid6_venv_runs_the_installer_as_jam_with_dist_and_venv(monkeypatch, tm
     installer = tmp_path / "INSTALL.sh"
     installer.write_text("#!/bin/sh\n")
     seen = {}
-    def fake(cmd, *, env, **k):
-        seen["cmd"], seen["env"] = cmd, env
+    def fake(cmd, **k):
+        seen["cmd"] = cmd
         return type("R", (), {"stdout": "bed 0.4\n"})()
     instance_settings("zoid6", installer=str(installer), venv=str(venv), account_dist=str(tmp_path / "dist"))
     monkeypatch.setattr(lib, "_writable_by_me", lambda path: True)
     monkeypatch.setattr(lib, "_run_subprocess", fake)
+    monkeypatch.setattr(lib, "_manifest_wheels", lambda path: ["zoid6-0.5.0-py3-none-any.whl"])
     lib.run_zoid6_venv(type("A", (), {"timeout": 5})())
-    assert seen["cmd"] == ["sh", str(installer)]
-    assert seen["env"]["VENV"] == str(venv)
-    assert seen["env"]["DIST"] == str(tmp_path / "dist")
+    # The shared installer runs pip into zoid6's venv from its dist directory, not the account script.
+    assert seen["cmd"][:4] == [f"{venv}/bin/python", "-m", "pip", "install"]
+    assert seen["cmd"][-1] == f"{tmp_path / 'dist'}/zoid6-0.5.0-py3-none-any.whl"
+    assert str(installer) not in seen["cmd"]
 
 
 def test_zoid6_venv_dry_run_does_not_abort(monkeypatch):

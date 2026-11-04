@@ -764,6 +764,11 @@ def _load_bed_instances(source=None):
     return {name: entry for name, entry in data.items() if not name.startswith("_")}
 
 
+#: Optional per-instance install settings. ``mode`` defaults to ``index``; ``wheelhouse`` is the
+#: external-package directory, required only in ``wheelhouse`` mode (see installer.check_mode).
+_OPTIONAL_INSTANCE_FIELDS = ("mode", "wheelhouse")
+
+
 def _expand_instance_path(value, source_base, stage):
     """Expand the {source_base} and {stage} placeholders in one path."""
     return value.replace("{source_base}", source_base).replace("{stage}", stage)
@@ -789,6 +794,17 @@ def _instance_settings(name):
     for field in _INSTANCE_FIELDS:
         settings[field] = _expand_instance_path(raw[field], SOURCE_BASE, stage)
     settings["stage"] = stage
+    # The supply mode and wheelhouse are per instance. Validated here so a bad registry entry fails
+    # before any install starts.
+    from deploytool import installer as _installer
+
+    mode = raw.get("mode", _installer.MODE_INDEX)
+    wheelhouse = raw.get("wheelhouse")
+    if wheelhouse is not None:
+        wheelhouse = _expand_instance_path(wheelhouse, SOURCE_BASE, stage)
+    _installer.check_mode(mode, wheelhouse)
+    settings["mode"] = mode
+    settings["wheelhouse"] = wheelhouse
     return settings
 
 
@@ -924,13 +940,17 @@ def run_bed_instance_venv(name, args):
         io.echo("Run the install as the account:")
         io.echo(f"  sudo -u {s['account']} {deploy_cmd} {name}.venv --prefix={venv}")
         raise DeployFailed(rc=2, label=label)
-    cmd = ["sh", s["installer"]]
-    env = os.environ.copy()
-    env["DIST"] = s["account_dist"]
-    env["VENV"] = venv
-    io.echo(f"{{cyan}}running:{{/all}} sh {s['installer']} (DIST={s['account_dist']} VENV={venv})")
+    # The shared installer builds the one pip call for this instance. The wheel list is the manifest's,
+    # in manifest order. The mode decides where external dependencies come from.
+    from deploytool import installer as _installer
+
+    wheels = _manifest_wheels(s["manifest"])
+    cmd = _installer.build_pip_command(
+        venv, wheels, dist=s["account_dist"], mode=s["mode"], wheelhouse=s["wheelhouse"],
+    )
+    io.echo(f"{{cyan}}running:{{/all}} pip install ({_installer.describe_mode(s['mode'], s['wheelhouse'])})")
     timeout = getattr(args, "timeout", DEFAULT_TIMEOUT_SECONDS)
-    result = _run_subprocess(cmd, timeout=timeout, env=env, label=label)
+    result = _run_subprocess(cmd, timeout=timeout, label=label)
     if result.stdout:
         io.echo(result.stdout)
     io.echo(f"{{green}}{label} installed{{/all}}")
