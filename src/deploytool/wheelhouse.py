@@ -24,6 +24,10 @@ from packaging.utils import canonicalize_name, parse_wheel_filename
 #: The index file written into the wheelhouse, listing every fetched distribution.
 INDEX_NAME = "wheelhouse-index.json"
 
+#: The default target platform: the 64-bit Linux hosts this deployment runs on. Override with
+#: --platform when the target differs. Wheels are selected for this, not for the download machine.
+DEFAULT_PLATFORM = "manylinux2014_x86_64"
+
 
 class WheelhouseError(RuntimeError):
     """Raised when the wheelhouse cannot be filled or does not match its index."""

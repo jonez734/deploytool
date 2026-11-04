@@ -16,6 +16,15 @@ def access(args, op, **kwargs) -> bool:
 
 
 def main(args, **kwargs):
+    if getattr(args, "fill_wheelhouse", None):
+        try:
+            return lib.run_fill_wheelhouse(args.fill_wheelhouse, args)
+        except (lib.DeployFailed, ValueError, FileNotFoundError, KeyError) as e:
+            io.echo(f"deploy aborted: {e}", level="error")
+            return 1
+    if not args.projects:
+        io.echo("deploy: name a project, or use --fill-wheelhouse INSTANCE", level="error")
+        return 2
     projects = lib.resolve(args.projects, with_deps=getattr(args, "with_deps", False))
 
     # Group subs by base so callers see what's being built per project

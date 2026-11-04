@@ -436,7 +436,24 @@ def buildargs(args=None, **kwargs):
     parser = argparse.ArgumentParser(usage="usage: deploy.py [options] project [project ...]")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--debug", action="store_true", help="debug mode")
-    parser.add_argument("projects", nargs="+", help="project names to deploy")
+    parser.add_argument(
+        "projects",
+        nargs="*",
+        help="project names to deploy (required unless --fill-wheelhouse is given)",
+    )
+    parser.add_argument(
+        "--platform",
+        default=None,
+        metavar="PLATFORM",
+        help="target platform for --fill-wheelhouse (default: %(default)s from wheelhouse)",
+    )
+    parser.add_argument(
+        "--fill-wheelhouse",
+        metavar="INSTANCE",
+        default=None,
+        help="download the external dependencies of INSTANCE's wheels into its wheelhouse "
+        "(needs package-index access; rsync the wheelhouse to the deployment afterwards)",
+    )
     parser.add_argument(
         "--host",
         default=DEFAULT_HOST,
@@ -954,6 +971,33 @@ def run_bed_instance_venv(name, args):
     if result.stdout:
         io.echo(result.stdout)
     io.echo(f"{{green}}{label} installed{{/all}}")
+
+
+def run_fill_wheelhouse(name, args):
+    """Fill INSTANCE's wheelhouse: download its external dependency tree, then check it is complete.
+
+    Runs where the package index is reachable. The wheelhouse is a directory separate from the
+    instance's dist directory, so refreshing external packages never touches the internal wheels.
+    """
+    from deploytool import wheelhouse as _wheelhouse
+
+    s = _instance_settings(name)
+    if not s["wheelhouse"]:
+        raise ValueError(f"bed instance {name!r} has no wheelhouse directory; set one in {BED_INSTANCES_RESOURCE}")
+    wheels = _manifest_wheels(s["manifest"])
+    internal = [os.path.join(s["stage"], w) for w in wheels]
+    missing = [p for p in internal if not os.path.isfile(p)]
+    if missing:
+        raise FileNotFoundError(f"internal wheels not staged for {name!r}: {', '.join(os.path.basename(m) for m in missing)}")
+    platform = getattr(args, "platform", None) or _wheelhouse.DEFAULT_PLATFORM
+    io.echo(f"{{cyan}}filling{{/all}} {s['wheelhouse']} for {name} ({platform}, python 3.12)")
+    index = _wheelhouse.fill(internal, s["wheelhouse"], platform=platform)
+    io.echo(f"{{green}}{len(index['files'])} distribution(s) fetched{{/all}}; index written")
+    gaps = _wheelhouse.check(s["wheelhouse"])
+    if gaps:
+        io.echo(f"{{red}}wheelhouse is incomplete: {', '.join(gaps)}{{/all}}", level="error")
+        raise DeployFailed(rc=2, label=f"{name}.wheelhouse")
+    return 0
 
 
 def run_zoid6_wheels(args):
