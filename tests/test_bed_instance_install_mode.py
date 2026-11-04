@@ -61,6 +61,7 @@ def test_unknown_mode_is_refused(monkeypatch):
 
 
 def test_the_packaged_registry_still_loads():
-    """The shipped bed_instances.json (zoid6) reads with its default index mode."""
+    """The shipped bed_instances.json (zoid6) reads in wheelhouse mode, with its wheelhouse directory."""
     settings = lib._instance_settings("zoid6")
-    assert settings["mode"] == "index"
+    assert settings["mode"] == "wheelhouse"
+    assert settings["wheelhouse"].endswith("/wheelhouse")

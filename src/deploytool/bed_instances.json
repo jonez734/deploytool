@@ -10,6 +10,8 @@
     "build_helper": "{source_base}/zoid6/scripts/build_zoid6_wheels.sh",
     "stage": "{source_base}/dist-wheels",
     "stage_env": "DEPLOYTOOL_ZOID6_STAGE",
-    "manifest": "{stage}/zoid6-wheels.txt"
+    "manifest": "{stage}/zoid6-wheels.txt",
+    "mode": "wheelhouse",
+    "wheelhouse": "{source_base}/wheelhouse"
   }
 }
