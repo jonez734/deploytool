@@ -62,6 +62,7 @@ DEPENDENCIES = {
     "zoid6": [ "bbsengine6"],
     "teos": ["bbsengine6", "zoid6"],
     "murdermotel": ["bbsengine6", "zoid6"],
+    "moneyday": ["bbsengine6"],
     "empyre": ["bbsengine6", "zoid6"],
     "casino": ["bbsengine6", "bed"],
     "bed": ["bbsengine6"],
@@ -110,6 +111,8 @@ VENV_LAYOUT = {
     "bbsengine6": VENV_USER,
     # murdermotel and empyre are loaded by the zoid6 bed, so they install into its venv.
     "murdermotel": "/home/zoid6/venv",
+    # moneyday is loaded by the zoid6 bed's shell as a module, so it installs into that venv.
+    "moneyday": "/home/zoid6/venv",
     "empyre": "/home/zoid6/venv",
     "casino": VENV_USER,
     "letteredolive": "/home/zoid6/venv",
@@ -174,6 +177,11 @@ CONDITIONAL_DEPENDENCIES = {
         # letteredolive.venv installs the engine locally via bbsengine6's venv target. The bare
         # DEPENDENCIES["letteredolive"] edge is skipped for venv (see BARE_DEPS_SKIPPED_FOR), so
         # bbsengine6.prod (the merlin rsync) never runs for a letteredolive venv install.
+        "venv": [("bbsengine6", "venv")],
+    },
+    "moneyday": {
+        # moneyday.venv installs the engine into the zoid6 venv via bbsengine6's venv target, so the
+        # module's bbsengine6 dependency is met before its own wheel installs.
         "venv": [("bbsengine6", "venv")],
     },
     "bed": {
@@ -278,6 +286,8 @@ TARGETS = {
     "empyre": ["venv", "deploy"],
     # murdermotel's deploy is not wired yet; only its venv is offered here.
     "murdermotel": ["venv"],
+    # moneyday's venv installs the module into the zoid6 venv; it has no web or deploy sub.
+    "moneyday": ["venv"],
     "zoidoffice": ["tui", "www"],
     # identd is a separate, explicit step: it is not part of bed.prod.
     "bed": ["tui", "venv", "prod", "identd"],
@@ -357,6 +367,7 @@ MAKE_TARGET_ALIASES = {
     ("aolbonics", "venv"): "venv",
     ("empyre", "venv"): "venv",
     ("murdermotel", "venv"): "venv",
+    ("moneyday", "venv"): "venv",
 }
 
 

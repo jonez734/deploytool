@@ -24,6 +24,7 @@ EXPECTED = {
     "murdermotel",
     "aolbonics",
     "empyre",
+    "moneyday",
 }
 
 
