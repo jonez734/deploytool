@@ -26,6 +26,7 @@ EXPECTED = {
     "empyre",
     "moneyday",
     "playingcarddata",
+    "asimov",
 }
 
 
@@ -35,6 +36,6 @@ def test_venv_layout_lists_exactly_the_managed_venv_projects():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("project", ["atlas", "achilles", "asimov", "teos", "zoidoffice"])
+@pytest.mark.parametrize("project", ["atlas", "achilles", "teos", "zoidoffice"])
 def test_projects_without_a_venv_install_are_not_listed(project):
     assert project not in lib.VENV_LAYOUT

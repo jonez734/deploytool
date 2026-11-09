@@ -116,6 +116,8 @@ VENV_LAYOUT = {
     "moneyday": "/home/zoid6/venv",
     # playingcarddata is installed into the zoid6 venv as the card art package asimov and casino read.
     "playingcarddata": "/home/zoid6/venv",
+    # asimov is loaded by the zoid6 bed alongside its other modules, so it installs into that venv.
+    "asimov": "/home/zoid6/venv",
     "empyre": "/home/zoid6/venv",
     "casino": VENV_USER,
     "letteredolive": "/home/zoid6/venv",
@@ -293,6 +295,8 @@ TARGETS = {
     "moneyday": ["venv"],
     # playingcarddata has one sub: its venv target installs the card package (images as package-data).
     "playingcarddata": ["venv"],
+    # asimov has one sub: its venv target installs the wheel into the zoid6 venv.
+    "asimov": ["venv"],
     "zoidoffice": ["tui", "www"],
     # identd is a separate, explicit step: it is not part of bed.prod.
     "bed": ["tui", "venv", "prod", "identd"],
@@ -370,6 +374,7 @@ MAKE_TARGET_ALIASES = {
     ("letteredolive", "prod"): "prod",
     ("deploytool", "venv"): "venv",
     ("playingcarddata", "venv"): "venv",
+    ("asimov", "venv"): "venv",
     ("aolbonics", "venv"): "venv",
     ("empyre", "venv"): "venv",
     ("murdermotel", "venv"): "venv",
