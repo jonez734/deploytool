@@ -25,6 +25,7 @@ EXPECTED = {
     "aolbonics",
     "empyre",
     "moneyday",
+    "playingcarddata",
 }
 
 

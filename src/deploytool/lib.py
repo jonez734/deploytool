@@ -63,6 +63,7 @@ DEPENDENCIES = {
     "teos": ["bbsengine6", "zoid6"],
     "murdermotel": ["bbsengine6", "zoid6"],
     "moneyday": ["bbsengine6"],
+    "playingcarddata": [],
     "empyre": ["bbsengine6", "zoid6"],
     "casino": ["bbsengine6", "bed"],
     "bed": ["bbsengine6"],
@@ -113,6 +114,8 @@ VENV_LAYOUT = {
     "murdermotel": "/home/zoid6/venv",
     # moneyday is loaded by the zoid6 bed's shell as a module, so it installs into that venv.
     "moneyday": "/home/zoid6/venv",
+    # playingcarddata is installed into the zoid6 venv as the card art package asimov and casino read.
+    "playingcarddata": "/home/zoid6/venv",
     "empyre": "/home/zoid6/venv",
     "casino": VENV_USER,
     "letteredolive": "/home/zoid6/venv",
@@ -288,6 +291,8 @@ TARGETS = {
     "murdermotel": ["venv"],
     # moneyday's venv installs the module into the zoid6 venv; it has no web or deploy sub.
     "moneyday": ["venv"],
+    # playingcarddata has one sub: its venv target installs the card package (images as package-data).
+    "playingcarddata": ["venv"],
     "zoidoffice": ["tui", "www"],
     # identd is a separate, explicit step: it is not part of bed.prod.
     "bed": ["tui", "venv", "prod", "identd"],
@@ -364,6 +369,7 @@ MAKE_TARGET_ALIASES = {
     ("letteredolive", "venv"): "venv",
     ("letteredolive", "prod"): "prod",
     ("deploytool", "venv"): "venv",
+    ("playingcarddata", "venv"): "venv",
     ("aolbonics", "venv"): "venv",
     ("empyre", "venv"): "venv",
     ("murdermotel", "venv"): "venv",
