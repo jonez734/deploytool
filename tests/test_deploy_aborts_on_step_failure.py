@@ -471,3 +471,20 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_failure_echoes_stdout_when_stderr_is_empty(monkeypatch):
+    """make and python -m build print their errors to stdout. A failed step with empty stderr must
+    still show that output, or the deploy log has no cause to act on."""
+    from deploytool import lib
+
+    echoed = []
+    monkeypatch.setattr(lib.io, "echo", lambda msg, level=None: echoed.append(msg))
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 2, stdout="ERROR: No module named 'bbsengine6'\n", stderr="")
+
+    monkeypatch.setattr(lib.subprocess, "run", fake_run)
+    with pytest.raises(lib.DeployFailed):
+        lib._run_subprocess(["make"], timeout=5, label="bed.venv")
+    assert any("No module named 'bbsengine6'" in m for m in echoed), echoed

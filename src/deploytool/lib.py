@@ -772,8 +772,11 @@ def _run_subprocess(cmd, *, cwd=None, timeout, env=None, label):
             f"{{bold}}{label}{{/all}} exited with rc={result.returncode}",
             level="error",
         )
-        if result.stderr:
-            io.echo(result.stderr, level="error")
+        # make and python -m build print their errors to stdout as often as to stderr, so show
+        # whichever has content. Dropping stdout hid the cause of a failed bed build.
+        output = result.stderr or result.stdout
+        if output:
+            io.echo(output, level="error")
         raise DeployFailed(result.returncode, label)
 
     return result
