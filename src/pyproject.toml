@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "bbsengine6>=0.5.0.dev20261106",
+    "bbsengine6>=0.4.0.dev",
 ]
 
 [project.scripts]
