@@ -433,6 +433,26 @@ def resolve_sub_prefix(sub, targets):
     return None
 
 
+def require_prefix_for_venv(project: str, *, prefix, sub: str) -> None:
+    """Refuse a venv deploy for a project with no fixed venv path unless --prefix names one.
+
+    Such a project (bed, bbsengine6, casino, and the others with a None VENV_LAYOUT entry) would otherwise fall back to
+    the calling account's active venv. When there is none, the failure surfaces deep inside make. Stop here instead,
+    and name --prefix.
+    """
+    if sub != "venv" or prefix:
+        return None
+    canonical = ALIASES.get(project, project)
+    if VENV_LAYOUT.get(canonical, VENV_USER) is not None:
+        return None
+    io.echo(
+        f"{{red}}{project}.venv has no fixed venv: pass --prefix to say which venv to install into{{/all}}\n"
+        f"  e.g. deploy --prefix /home/zoid6/venv {project}.venv",
+        level="error",
+    )
+    sys.exit(1)
+
+
 def get_venv_layout(base: str) -> str:
     canonical: str = ALIASES.get(base, base)
     venv = VENV_LAYOUT.get(canonical, VENV_USER)
@@ -1073,6 +1093,8 @@ def run_make_deploy(args, project, sub=None):
 
     # A venv install writes launchers into <prefix>/bin. Check that before make runs, so a deploy
     # the user cannot complete stops early with the owning account's command (dry runs only print).
+    # A venv deploy for a project with no fixed venv must say which one with --prefix. Checked for dry runs too.
+    require_prefix_for_venv(project, prefix=getattr(args, "prefix", None), sub=sub)
     if sub in ("venv", "prod") and not getattr(args, "dry_run", False):
         prefix = getattr(args, "prefix", None) or VENV_LAYOUT.get(ALIASES.get(project, project))
         _check_venv_bin_writable(label, prefix)
