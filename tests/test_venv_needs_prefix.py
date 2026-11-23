@@ -20,7 +20,9 @@ def test_a_venv_deploy_without_a_prefix_is_refused_with_a_prefix_message(project
         lib.require_prefix_for_venv(project, prefix=None, sub="venv")
     assert ctx.value.code != 0
     out = capsys.readouterr().out + capsys.readouterr().err
-    assert "--prefix" in out or "--prefix" in str(ctx.value)
+    assert "DEPLOY STOPPED" in out
+    assert "--prefix is required" in out
+    assert f"deploy --prefix /home/zoid6/venv {project}.venv" in out
 
 
 @pytest.mark.unit

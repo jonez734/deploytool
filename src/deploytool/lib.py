@@ -445,9 +445,15 @@ def require_prefix_for_venv(project: str, *, prefix, sub: str) -> None:
     canonical = ALIASES.get(project, project)
     if VENV_LAYOUT.get(canonical, VENV_USER) is not None:
         return None
+    bar = "=" * 72
     io.echo(
-        f"{{red}}{project}.venv has no fixed venv: pass --prefix to say which venv to install into{{/all}}\n"
-        f"  e.g. deploy --prefix /home/zoid6/venv {project}.venv",
+        f"{{red}}{bar}\n"
+        f"  DEPLOY STOPPED: {project}.venv has no fixed venv path.\n"
+        f"  --prefix is required. Without it the install would go into the calling account's active venv,\n"
+        f"  and when there is none the failure only appears later, inside make.\n"
+        f"  Pass the venv to install into, for example:\n"
+        f"    deploy --prefix /home/zoid6/venv {project}.venv\n"
+        f"{bar}{{/all}}",
         level="error",
     )
     sys.exit(1)
