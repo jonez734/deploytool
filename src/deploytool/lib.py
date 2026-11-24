@@ -103,6 +103,8 @@ VENV_USER = None
 # plumb venv vars into `make`; per-project Makefile defaults and `pip` handle
 # venv targeting. Projects not listed default to VENV_USER.
 VENV_LAYOUT = {
+    # setupimagebbs installs into the calling user's venv by default; it is exempt from the --prefix requirement.
+    "setupimagebbs": VENV_USER,
     # The zoid6 account owns its venv under its home; the daemon unit runs from here.
     "zoid6": "/home/zoid6/venv",
     # bed is listed (it installs into a managed venv) but has no fixed path: without
@@ -142,6 +144,7 @@ VENV_LAYOUT = {
 # local source build lives in `getdate_next/Makefile deploy-venv` for
 # developer/CI use, but the deploy chain doesn't call it.
 CONDITIONAL_DEPENDENCIES = {
+    "setupimagebbs": {"venv": [("bbsengine6", "venv")]},
     "zoid6": {
         # Updated 2026-09-29 — bare-string "bbsengine6" replaced by
         # explicit ("bbsengine6", "prod"). The bare-string form relied
@@ -261,6 +264,8 @@ CONDITIONAL_DEPENDENCIES = {
 }
 
 TARGETS = {
+    # setupimagebbs installs into the user's venv (see USER_VENV_PROJECTS); no --prefix needed.
+    "setupimagebbs": ["venv"],
     # identd is a separate, explicit step: it is not part of zoid6.prod.
     "zoid6": ["www", "tui", "prod", "shared", "identd", "root", "wheels", "venv"],
     "letteredolive": ["venv", "prod"],
@@ -433,6 +438,11 @@ def resolve_sub_prefix(sub, targets):
     return None
 
 
+#: Projects whose venv target installs into the calling user's venv by default, without --prefix.
+#: Every other project with no fixed venv path (VENV_USER) still requires --prefix.
+USER_VENV_PROJECTS = frozenset({"setupimagebbs"})
+
+
 def require_prefix_for_venv(project: str, *, prefix, sub: str) -> None:
     """Refuse a venv deploy for a project with no fixed venv path unless --prefix names one.
 
@@ -441,6 +451,8 @@ def require_prefix_for_venv(project: str, *, prefix, sub: str) -> None:
     and name --prefix.
     """
     if sub != "venv" or prefix:
+        return None
+    if ALIASES.get(project, project) in USER_VENV_PROJECTS:
         return None
     canonical = ALIASES.get(project, project)
     if VENV_LAYOUT.get(canonical, VENV_USER) is not None:

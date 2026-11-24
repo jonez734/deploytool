@@ -27,6 +27,7 @@ EXPECTED = {
     "moneyday",
     "playingcarddata",
     "asimov",
+    "setupimagebbs",
 }
 
 

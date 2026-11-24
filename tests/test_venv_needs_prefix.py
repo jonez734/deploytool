@@ -10,7 +10,7 @@ import pytest
 
 import deploytool.lib as lib
 
-NO_FIXED_VENV = sorted(k for k, v in lib.VENV_LAYOUT.items() if v is None)
+NO_FIXED_VENV = sorted(k for k, v in lib.VENV_LAYOUT.items() if v is None and k not in lib.USER_VENV_PROJECTS)
 
 
 @pytest.mark.unit
